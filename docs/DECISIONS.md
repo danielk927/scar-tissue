@@ -30,4 +30,21 @@ Append-only. One line per decision, under your person's heading (SPEC R11).
 
 ## Person 2
 
+- 2026-10-17: Model errors: any `openai.APIError` (after the client's 2 retries), a turn over 60 s, or a malformed response (no choices, bad role) ends the run with `stop_reason="model_error"`.
+- 2026-10-17: Any non-200 or connection failure from env `/tools/execute` counts as `tool_error` (9.2 names only 503 and timeout).
+- 2026-10-17: If env `/verify` is unreachable, the run is not stored and the agent API returns 503.
+- 2026-10-17: `system_v1` text = `agent/scar_agent/prompts/system_v1.md` with the trailing newline stripped. Person 1: use the same when composing arm B prompts.
+- 2026-10-17: Jev triage state leaves `submit_answer` out of `steps` (it is in `final_answer`) and keeps the first 12 steps. A cause label Jev returns that is not a `FailureCause` maps to `other`.
+- 2026-10-17: `exclusion_reason` codes: `learnable_p_below_threshold`, `cause_<cause>`, `stop_reason_<stop_reason>`, `over_cap`.
+- 2026-10-17: Mining is all or nothing: every Jev call first, then one transaction. If Jev fails, nothing is stored and the API returns 503. Idempotency = "any record exists for this arm/seed/generation".
+- 2026-10-17: Jev client: 10 s per attempt, up to 3 retries inside a 30 s budget (our reading of 7.4; see `docs/JEV.md`).
+- 2026-10-17: Judge generation = latest D-s0 generation with status `promoted` or `rejected`, plus one (1 if none).
+- 2026-10-17: Unmatched judge questions get three example questions built from that company's first expense account and first vendor.
+- 2026-10-17: "Re-run on newest model" calls `/agent/run` on the same `task_id` with the current D-s0 model, `purpose="judge"`, and the judge generation rule.
+- 2026-10-17: Sentry: runs with `purpose="judge"` continue the caller's trace (judge click → run in one trace); every other run gets a fresh trace. Chat spans also carry `gen_ai.provider.name="openai"` and `gen_ai.response.model` (Sentry docs require them); tool I/O uses `gen_ai.tool.call.arguments` / `.result`; messages are converted to Sentry's `{role, parts}` shape. Details in `docs/SENTRY.md`.
+- 2026-10-17: Dashboard plots the eval score of the version in use after each generation (`eval_score` if promoted, `parent_eval_score` if rejected). Arm A is drawn flat at the base score when it has no generation records.
+- 2026-10-17: The web reaches services through Next.js rewrites `/api/{agent,train,env}/*` (same origin, so no CORS and trace headers pass through); proxy timeout 200 s.
+- 2026-10-17: Session Replay rate comes from `NEXT_PUBLIC_SENTRY_REPLAY_RATE` (default 0, set 1 for the demo) because the free plan has 50 replays; error replays stay at 100%.
+- 2026-10-17: Web pins `next@16.3.8` and `@sentry/nextjs@11.4.0` (newest releases at least two weeks old).
+
 ## Person 3
