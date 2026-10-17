@@ -1,0 +1,63 @@
+- id: acct-checking
+  name: Business Checking
+  classification: asset
+  account_type: bank
+  account_subtype: checking
+  description: Operating bank account; every settlement moves through it.
+  sim_event_ids: []
+- id: acct-equipment
+  name: Equipment
+  classification: asset
+  account_type: fixed_asset
+  account_subtype: machinery_and_equipment
+  description: Design equipment at cost.
+  sim_event_ids: []
+- id: acct-accumulated-depreciation
+  name: Accumulated Depreciation
+  classification: asset
+  account_type: fixed_asset
+  account_subtype: accumulated_depreciation
+  description: Depreciation charged against equipment to date.
+  sim_event_ids: []
+- id: acct-payable
+  name: Accounts Payable
+  classification: liability
+  account_type: accounts_payable
+  account_subtype: accounts_payable
+  description: Bills received and not yet paid.
+  sim_event_ids: []
+- id: acct-opening-equity
+  name: Opening Balance Equity
+  classification: equity
+  account_type: equity
+  account_subtype: opening_balance_equity
+  description: Owner's opening contribution.
+  sim_event_ids: []
+- id: acct-construction-income
+  name: Construction Income
+  classification: revenue
+  account_type: income
+  account_subtype: service_fee_income
+  description: Revenue from project work.
+  sim_event_ids: []
+- id: acct-subcontractors
+  name: Subcontractors
+  classification: expense
+  account_type: cost_of_goods_sold
+  account_subtype: cost_of_labor_cos
+  description: Trade labor bought for client projects.
+  sim_event_ids: []
+- id: acct-utilities
+  name: Utilities
+  classification: expense
+  account_type: expense
+  account_subtype: utilities
+  description: Electricity and water.
+  sim_event_ids: []
+- id: acct-depreciation
+  name: Depreciation
+  classification: expense
+  account_type: expense
+  account_subtype: depreciation
+  description: Depreciation of equipment.
+  sim_event_ids: []

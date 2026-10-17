@@ -1,0 +1,30 @@
+- id: vend-supplier
+  display_name: Pinecrest Outfitters
+  company_name: Pinecrest Outfitters
+  payment_terms: Net 7
+  payment_terms_days: 7
+  supply_role: product
+  joined_sim_day: 0
+  joined_date: '2026-01-01'
+  sim_actor_id: supplier
+  sim_event_ids: []
+- id: vend-freight-vendor
+  display_name: Swiftline Haulage
+  company_name: Swiftline Haulage
+  payment_terms: Due on receipt
+  payment_terms_days: 0
+  supply_role: operating
+  joined_sim_day: 0
+  joined_date: '2026-01-01'
+  sim_actor_id: freight_vendor
+  sim_event_ids: []
+- id: vend-landlord
+  display_name: Hollyhock Commercial Properties
+  company_name: Hollyhock Commercial Properties
+  payment_terms: Due on receipt
+  payment_terms_days: 0
+  supply_role: premises
+  joined_sim_day: 0
+  joined_date: '2026-01-01'
+  sim_actor_id: landlord
+  sim_event_ids: []

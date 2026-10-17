@@ -1,0 +1,60 @@
+- id: je-payroll-00001
+  doc_number: JE-9001
+  purpose: wage_accrual
+  txn_sim_day: 7
+  txn_date: '2026-05-08'
+  lines:
+  - line_num: 1
+    account_id: acct-wage-expense
+    account_name: Wage Expense
+    description: Wages earned.
+    debit_amount: '2100.00'
+    credit_amount: '0.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  - line_num: 2
+    account_id: acct-wages-payable
+    account_name: Wages Payable
+    description: Wages owed.
+    debit_amount: '0.00'
+    credit_amount: '2100.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  project_id: null
+  memo: Weekly wages earned by Viktor Duvall.
+  provenance_note: sim:0000000000000803:je-payroll-00001
+  sim_obligation_id: obligation-00003
+  sim_payment_id: null
+  sim_event_ids: []
+- id: je-baddebt-00001
+  doc_number: JE-9002
+  purpose: bad_debt
+  txn_sim_day: 42
+  txn_date: '2026-06-12'
+  lines:
+  - line_num: 1
+    account_id: acct-bad-debt
+    account_name: Bad Debts
+    description: Uncollectible balance written off.
+    debit_amount: '75.00'
+    credit_amount: '0.00'
+    customer_id: cust-00004
+    vendor_id: null
+    document_id: inv-00012
+  - line_num: 2
+    account_id: acct-receivable
+    account_name: Accounts Receivable
+    description: Receivable cleared.
+    debit_amount: '0.00'
+    credit_amount: '75.00'
+    customer_id: cust-00004
+    vendor_id: null
+    document_id: inv-00012
+  project_id: null
+  memo: Invoice inv-00012 written off as uncollectible.
+  provenance_note: sim:0000000000000803:je-baddebt-00001
+  sim_obligation_id: null
+  sim_payment_id: null
+  sim_event_ids: []

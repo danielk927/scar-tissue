@@ -1,0 +1,90 @@
+- id: je-open-00001
+  doc_number: JE-9001
+  purpose: opening_equity
+  txn_sim_day: 0
+  txn_date: '2026-03-01'
+  lines:
+  - line_num: 1
+    account_id: acct-checking
+    account_name: Business Checking
+    description: Opening cash.
+    debit_amount: '20000.00'
+    credit_amount: '0.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  - line_num: 2
+    account_id: acct-opening-equity
+    account_name: Opening Balance Equity
+    description: Owner contribution.
+    debit_amount: '0.00'
+    credit_amount: '20000.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  project_id: null
+  memo: Owner's opening cash contribution.
+  provenance_note: sim:0000000000000802:je-open-00001
+  sim_obligation_id: null
+  sim_payment_id: null
+  sim_event_ids: []
+- id: je-depr-00001
+  doc_number: JE-9002
+  purpose: depreciation
+  txn_sim_day: 30
+  txn_date: '2026-03-31'
+  lines:
+  - line_num: 1
+    account_id: acct-depreciation
+    account_name: Depreciation
+    description: Depreciation charge.
+    debit_amount: '125.00'
+    credit_amount: '0.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  - line_num: 2
+    account_id: acct-accumulated-depreciation
+    account_name: Accumulated Depreciation
+    description: Depreciation to date.
+    debit_amount: '0.00'
+    credit_amount: '125.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  project_id: null
+  memo: Monthly depreciation of design equipment.
+  provenance_note: sim:0000000000000802:je-depr-00001
+  sim_obligation_id: null
+  sim_payment_id: null
+  sim_event_ids: []
+- id: je-depr-00002
+  doc_number: JE-9003
+  purpose: depreciation
+  txn_sim_day: 60
+  txn_date: '2026-04-30'
+  lines:
+  - line_num: 1
+    account_id: acct-depreciation
+    account_name: Depreciation
+    description: Depreciation charge.
+    debit_amount: '125.00'
+    credit_amount: '0.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  - line_num: 2
+    account_id: acct-accumulated-depreciation
+    account_name: Accumulated Depreciation
+    description: Depreciation to date.
+    debit_amount: '0.00'
+    credit_amount: '125.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  project_id: null
+  memo: Monthly depreciation of design equipment.
+  provenance_note: sim:0000000000000802:je-depr-00002
+  sim_obligation_id: null
+  sim_payment_id: null
+  sim_event_ids: []

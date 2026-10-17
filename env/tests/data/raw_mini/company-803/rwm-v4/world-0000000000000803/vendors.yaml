@@ -1,0 +1,10 @@
+- id: vend-insurer
+  display_name: Harborline Mutual
+  company_name: Harborline Mutual
+  payment_terms: Net 30
+  payment_terms_days: 30
+  supply_role: insurance
+  joined_sim_day: 0
+  joined_date: '2026-05-01'
+  sim_actor_id: insurer
+  sim_event_ids: []

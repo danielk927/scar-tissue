@@ -1,0 +1,11 @@
+- id: item-00001
+  name: Routine Cleaning Visit
+  sku: RCV-01-001
+  description: Routine cleaning and check-up appointment.
+  item_type: service
+  unit_price_amount: '160.00'
+  unit_cost_amount: '0.00'
+  income_account_id: acct-product-income
+  purchase_account_id: acct-wage-expense
+  sim_product_id: null
+  sim_event_ids: []

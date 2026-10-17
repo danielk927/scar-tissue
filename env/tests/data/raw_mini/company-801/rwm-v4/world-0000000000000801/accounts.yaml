@@ -1,0 +1,91 @@
+- id: acct-checking
+  name: Business Checking
+  classification: asset
+  account_type: bank
+  account_subtype: checking
+  description: Operating bank account; every settlement moves through it.
+  sim_event_ids: []
+- id: acct-inventory
+  name: Inventory Asset
+  classification: asset
+  account_type: other_current_asset
+  account_subtype: inventory
+  description: Goods bought for resale, held at cost until sold.
+  sim_event_ids: []
+- id: acct-wip
+  name: Work in Progress
+  classification: asset
+  account_type: other_current_asset
+  account_subtype: other_current_assets
+  description: Project costs incurred and not yet recognized against revenue.
+  sim_event_ids: []
+- id: acct-payable
+  name: Accounts Payable
+  classification: liability
+  account_type: accounts_payable
+  account_subtype: accounts_payable
+  description: Bills received and not yet paid.
+  sim_event_ids: []
+- id: acct-wages-payable
+  name: Wages Payable
+  classification: liability
+  account_type: other_current_liability
+  account_subtype: payroll_clearing
+  description: Wages earned and not yet paid.
+  sim_event_ids: []
+- id: acct-accrued-interest
+  name: Accrued Interest
+  classification: liability
+  account_type: other_current_liability
+  account_subtype: other_current_liabilities
+  description: Interest owed and not yet paid.
+  sim_event_ids: []
+- id: acct-opening-equity
+  name: Opening Balance Equity
+  classification: equity
+  account_type: equity
+  account_subtype: opening_balance_equity
+  description: Owner's opening contribution.
+  sim_event_ids: []
+- id: acct-product-income
+  name: Product Sales
+  classification: revenue
+  account_type: income
+  account_subtype: sales_of_product_income
+  description: Revenue from goods sold.
+  sim_event_ids: []
+- id: acct-cogs
+  name: Cost of Goods Sold
+  classification: expense
+  account_type: cost_of_goods_sold
+  account_subtype: supplies_materials_cogs
+  description: Cost of goods delivered to customers.
+  sim_event_ids: []
+- id: acct-manager-wages
+  name: Project Manager Wages
+  classification: expense
+  account_type: expense
+  account_subtype: payroll_expenses
+  description: Supervisor payroll carried as overhead.
+  sim_event_ids: []
+- id: acct-rent
+  name: Rent and Lease
+  classification: expense
+  account_type: expense
+  account_subtype: rent_or_lease_of_buildings
+  description: Premises rent.
+  sim_event_ids: []
+- id: acct-freight
+  name: Shipping and Delivery
+  classification: expense
+  account_type: expense
+  account_subtype: shipping_freight_delivery
+  description: Outbound carriage.
+  sim_event_ids: []
+- id: acct-interest-expense
+  name: Interest Expense
+  classification: expense
+  account_type: other_expense
+  account_subtype: interest_paid
+  description: Interest on borrowing.
+  sim_event_ids: []

@@ -1,0 +1,48 @@
+- id: bill-insurance-00001
+  doc_number: BILL-5001
+  vendor_id: vend-insurer
+  vendor_name: Harborline Mutual
+  expense_kind: operating
+  txn_sim_day: 0
+  txn_date: '2026-05-01'
+  due_sim_day: 30
+  due_date: '2026-05-31'
+  item_lines: []
+  account_lines:
+  - line_num: 1
+    account_id: acct-insurance
+    account_name: Insurance
+    description: Practice liability and property cover (insurance).
+    amount: '900.00'
+  total_amount: '900.00'
+  project_id: null
+  cost_category: insurance
+  memo: Standing overhead charge for the period.
+  provenance_note: sim:0000000000000803:bill-insurance-00001
+  sim_obligation_id: obligation-00001
+  sim_order_id: null
+  sim_event_ids: []
+- id: bill-insurance-00002
+  doc_number: BILL-5002
+  vendor_id: vend-insurer
+  vendor_name: Harborline Mutual
+  expense_kind: operating
+  txn_sim_day: 31
+  txn_date: '2026-06-01'
+  due_sim_day: 61
+  due_date: '2026-07-01'
+  item_lines: []
+  account_lines:
+  - line_num: 1
+    account_id: acct-insurance
+    account_name: Insurance
+    description: Practice liability and property cover (insurance).
+    amount: '900.00'
+  total_amount: '900.00'
+  project_id: null
+  cost_category: insurance
+  memo: Standing overhead charge for the period.
+  provenance_note: sim:0000000000000803:bill-insurance-00002
+  sim_obligation_id: obligation-00002
+  sim_order_id: null
+  sim_event_ids: []

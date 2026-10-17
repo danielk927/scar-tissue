@@ -1,0 +1,63 @@
+- id: acct-checking
+  name: Business Checking
+  classification: asset
+  account_type: bank
+  account_subtype: checking
+  description: Operating bank account; every settlement moves through it.
+  sim_event_ids: []
+- id: acct-receivable
+  name: Accounts Receivable
+  classification: asset
+  account_type: accounts_receivable
+  account_subtype: accounts_receivable
+  description: Amounts invoiced to customers and not yet collected.
+  sim_event_ids: []
+- id: acct-payable
+  name: Accounts Payable
+  classification: liability
+  account_type: accounts_payable
+  account_subtype: accounts_payable
+  description: Bills received and not yet paid.
+  sim_event_ids: []
+- id: acct-wages-payable
+  name: Wages Payable
+  classification: liability
+  account_type: other_current_liability
+  account_subtype: payroll_clearing
+  description: Wages earned and not yet paid.
+  sim_event_ids: []
+- id: acct-opening-equity
+  name: Opening Balance Equity
+  classification: equity
+  account_type: equity
+  account_subtype: opening_balance_equity
+  description: Owner's opening contribution.
+  sim_event_ids: []
+- id: acct-product-income
+  name: Patient Fees
+  classification: revenue
+  account_type: income
+  account_subtype: service_fee_income
+  description: Fees for appointments.
+  sim_event_ids: []
+- id: acct-wage-expense
+  name: Wage Expense
+  classification: expense
+  account_type: expense
+  account_subtype: payroll_expenses
+  description: Staff payroll.
+  sim_event_ids: []
+- id: acct-insurance
+  name: Insurance
+  classification: expense
+  account_type: expense
+  account_subtype: insurance
+  description: Liability and property insurance.
+  sim_event_ids: []
+- id: acct-bad-debt
+  name: Bad Debts
+  classification: expense
+  account_type: expense
+  account_subtype: bad_debts
+  description: Receivables written off.
+  sim_event_ids: []

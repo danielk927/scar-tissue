@@ -1,0 +1,32 @@
+[
+  {
+    "company_id": "company-803",
+    "display_name": "Willowbank Dental",
+    "industry_naics": "621210",
+    "industry_title": "Offices of Dentists",
+    "profile": "appointments",
+    "size_tier": "small",
+    "dataset_id": "world-0000000000000803",
+    "distressed": false
+  },
+  {
+    "company_id": "company-801",
+    "display_name": "Millbrook Supply Co",
+    "industry_naics": "423840",
+    "industry_title": "Industrial Supplies Merchant Wholesalers",
+    "profile": "wholesale",
+    "size_tier": "small",
+    "dataset_id": "world-0000000000000801",
+    "distressed": false
+  },
+  {
+    "company_id": "company-802",
+    "display_name": "Fernhill Design Studio",
+    "industry_naics": "541410",
+    "industry_title": "Interior Design Services",
+    "profile": "construction",
+    "size_tier": "small",
+    "dataset_id": "world-0000000000000802",
+    "distressed": false
+  }
+]

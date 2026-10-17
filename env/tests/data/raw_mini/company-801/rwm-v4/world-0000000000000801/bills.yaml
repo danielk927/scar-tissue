@@ -1,0 +1,148 @@
+- id: bill-operating-00001
+  doc_number: BILL-5001
+  vendor_id: vend-landlord
+  vendor_name: Hollyhock Commercial Properties
+  expense_kind: operating
+  txn_sim_day: 0
+  txn_date: '2026-01-01'
+  due_sim_day: 0
+  due_date: '2026-01-01'
+  item_lines: []
+  account_lines:
+  - line_num: 1
+    account_id: acct-rent
+    account_name: Rent and Lease
+    description: Premises rent for the month (premises).
+    amount: '1500.00'
+  total_amount: '1500.00'
+  project_id: null
+  cost_category: premises
+  memo: Standing overhead charge for the period.
+  provenance_note: sim:0000000000000801:bill-operating-00001
+  sim_obligation_id: obligation-00001
+  sim_order_id: null
+  sim_event_ids: []
+- id: bill-00001
+  doc_number: BILL-5002
+  vendor_id: vend-supplier
+  vendor_name: Pinecrest Outfitters
+  expense_kind: product
+  txn_sim_day: 4
+  txn_date: '2026-01-05'
+  due_sim_day: 11
+  due_date: '2026-01-12'
+  item_lines:
+  - line_num: 1
+    item_id: item-00001
+    item_name: Shop Towels, Case of 50
+    description: Case of fifty lint-free shop towels.
+    quantity: 100
+    unit_price_amount: '6.15'
+    amount: '615.00'
+  account_lines: []
+  total_amount: '615.00'
+  project_id: null
+  cost_category: purchase
+  memo: Partial backorder noted; balance to follow separately.
+  provenance_note: sim:0000000000000801:bill-00001
+  sim_obligation_id: obligation-00002
+  sim_order_id: order-00001
+  sim_event_ids: []
+- id: bill-freight-00001
+  doc_number: BILL-5003
+  vendor_id: vend-freight-vendor
+  vendor_name: Swiftline Haulage
+  expense_kind: operating
+  txn_sim_day: 5
+  txn_date: '2026-01-06'
+  due_sim_day: 5
+  due_date: '2026-01-06'
+  item_lines: []
+  account_lines:
+  - line_num: 1
+    account_id: acct-freight
+    account_name: Shipping and Delivery
+    description: Outbound carriage on customer shipments (freight).
+    amount: '120.00'
+  total_amount: '120.00'
+  project_id: null
+  cost_category: freight
+  memo: Delivery accepted with seals intact.
+  provenance_note: sim:0000000000000801:bill-freight-00001
+  sim_obligation_id: obligation-00003
+  sim_order_id: null
+  sim_event_ids: []
+- id: bill-freight-00002
+  doc_number: BILL-5004
+  vendor_id: vend-freight-vendor
+  vendor_name: Swiftline Haulage
+  expense_kind: operating
+  txn_sim_day: 12
+  txn_date: '2026-01-13'
+  due_sim_day: 12
+  due_date: '2026-01-13'
+  item_lines: []
+  account_lines:
+  - line_num: 1
+    account_id: acct-freight
+    account_name: Shipping and Delivery
+    description: Outbound carriage on customer shipments (freight).
+    amount: '120.00'
+  total_amount: '120.00'
+  project_id: null
+  cost_category: freight
+  memo: Delivery accepted with seals intact.
+  provenance_note: sim:0000000000000801:bill-freight-00002
+  sim_obligation_id: obligation-00004
+  sim_order_id: null
+  sim_event_ids: []
+- id: bill-operating-00002
+  doc_number: BILL-5005
+  vendor_id: vend-landlord
+  vendor_name: Hollyhock Commercial Properties
+  expense_kind: operating
+  txn_sim_day: 31
+  txn_date: '2026-02-01'
+  due_sim_day: 31
+  due_date: '2026-02-01'
+  item_lines: []
+  account_lines:
+  - line_num: 1
+    account_id: acct-rent
+    account_name: Rent and Lease
+    description: Premises rent for the month (premises).
+    amount: '1500.00'
+  total_amount: '1500.00'
+  project_id: null
+  cost_category: premises
+  memo: Partial backorder noted; balance to follow separately.
+  provenance_note: sim:0000000000000801:bill-operating-00002
+  sim_obligation_id: obligation-00005
+  sim_order_id: null
+  sim_event_ids: []
+- id: bill-00002
+  doc_number: BILL-5006
+  vendor_id: vend-supplier
+  vendor_name: Pinecrest Outfitters
+  expense_kind: product
+  txn_sim_day: 33
+  txn_date: '2026-02-03'
+  due_sim_day: 40
+  due_date: '2026-02-10'
+  item_lines:
+  - line_num: 1
+    item_id: item-00002
+    item_name: Safety Gloves, Box of 12
+    description: Box of twelve cut-resistant safety gloves.
+    quantity: 40
+    unit_price_amount: '12.50'
+    amount: '500.00'
+  account_lines: []
+  total_amount: '500.00'
+  project_id: null
+  cost_category: purchase
+  memo: Delivery accepted with seals intact.
+  provenance_note: sim:0000000000000801:bill-00002
+  sim_obligation_id: obligation-00006
+  sim_order_id: order-00002
+  sim_event_ids: []

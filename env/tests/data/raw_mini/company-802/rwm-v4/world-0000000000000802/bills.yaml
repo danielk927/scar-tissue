@@ -1,0 +1,96 @@
+- id: bill-subcontract-00001
+  doc_number: BILL-5001
+  vendor_id: vend-subcontractor-1
+  vendor_name: Brightfield Tile & Stone
+  expense_kind: operating
+  txn_sim_day: 1
+  txn_date: '2026-03-02'
+  due_sim_day: 16
+  due_date: '2026-03-17'
+  item_lines: []
+  account_lines:
+  - line_num: 1
+    account_id: acct-subcontractors
+    account_name: Subcontractors
+    description: Tile installation labor on a client project (subcontract).
+    amount: '2400.00'
+  total_amount: '2400.00'
+  project_id: proj-00001
+  cost_category: subcontract
+  memo: Standing overhead charge for the period.
+  provenance_note: sim:0000000000000802:bill-subcontract-00001
+  sim_obligation_id: obligation-00001
+  sim_order_id: null
+  sim_event_ids: []
+- id: bill-utility-00001
+  doc_number: BILL-5002
+  vendor_id: vend-electricity
+  vendor_name: Copperfield Water District
+  expense_kind: operating
+  txn_sim_day: 9
+  txn_date: '2026-03-10'
+  due_sim_day: 9
+  due_date: '2026-03-10'
+  item_lines: []
+  account_lines:
+  - line_num: 1
+    account_id: acct-utilities
+    account_name: Utilities
+    description: Electricity and water service (utility).
+    amount: '310.25'
+  total_amount: '310.25'
+  project_id: null
+  cost_category: utility
+  memo: Delivery accepted with seals intact.
+  provenance_note: sim:0000000000000802:bill-utility-00001
+  sim_obligation_id: obligation-00002
+  sim_order_id: null
+  sim_event_ids: []
+- id: bill-subcontract-00002
+  doc_number: BILL-5003
+  vendor_id: vend-subcontractor-1
+  vendor_name: Brightfield Tile & Stone
+  expense_kind: operating
+  txn_sim_day: 15
+  txn_date: '2026-03-16'
+  due_sim_day: 30
+  due_date: '2026-03-31'
+  item_lines: []
+  account_lines:
+  - line_num: 1
+    account_id: acct-subcontractors
+    account_name: Subcontractors
+    description: Tile installation labor on a client project (subcontract).
+    amount: '2400.00'
+  total_amount: '2400.00'
+  project_id: proj-00001
+  cost_category: subcontract
+  memo: Partial backorder noted; balance to follow separately.
+  provenance_note: sim:0000000000000802:bill-subcontract-00002
+  sim_obligation_id: obligation-00003
+  sim_order_id: null
+  sim_event_ids: []
+- id: bill-utility-00002
+  doc_number: BILL-5004
+  vendor_id: vend-electricity
+  vendor_name: Copperfield Water District
+  expense_kind: operating
+  txn_sim_day: 40
+  txn_date: '2026-04-10'
+  due_sim_day: 40
+  due_date: '2026-04-10'
+  item_lines: []
+  account_lines:
+  - line_num: 1
+    account_id: acct-utilities
+    account_name: Utilities
+    description: Electricity and water service (utility).
+    amount: '298.40'
+  total_amount: '298.40'
+  project_id: null
+  cost_category: utility
+  memo: Standing overhead charge for the period.
+  provenance_note: sim:0000000000000802:bill-utility-00002
+  sim_obligation_id: obligation-00004
+  sim_order_id: null
+  sim_event_ids: []

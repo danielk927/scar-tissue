@@ -1,0 +1,20 @@
+- id: vend-subcontractor-1
+  display_name: Brightfield Tile & Stone
+  company_name: Brightfield Tile & Stone
+  payment_terms: Net 15
+  payment_terms_days: 15
+  supply_role: subcontract
+  joined_sim_day: 0
+  joined_date: '2026-03-01'
+  sim_actor_id: subcontractor_1
+  sim_event_ids: []
+- id: vend-electricity
+  display_name: Copperfield Water District
+  company_name: Copperfield Water District
+  payment_terms: Due on receipt
+  payment_terms_days: 0
+  supply_role: utility
+  joined_sim_day: 0
+  joined_date: '2026-03-01'
+  sim_actor_id: electricity
+  sim_event_ids: []

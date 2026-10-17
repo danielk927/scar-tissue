@@ -1,0 +1,22 @@
+- id: item-00001
+  name: Shop Towels, Case of 50
+  sku: STC-50-101
+  description: Case of fifty lint-free shop towels.
+  item_type: non_inventory
+  unit_price_amount: '9.95'
+  unit_cost_amount: '6.15'
+  income_account_id: acct-product-income
+  purchase_account_id: acct-inventory
+  sim_product_id: product-1
+  sim_event_ids: []
+- id: item-00002
+  name: Safety Gloves, Box of 12
+  sku: SGB-12-202
+  description: Box of twelve cut-resistant safety gloves.
+  item_type: non_inventory
+  unit_price_amount: '19.90'
+  unit_cost_amount: '12.50'
+  income_account_id: acct-product-income
+  purchase_account_id: acct-inventory
+  sim_product_id: product-2
+  sim_event_ids: []

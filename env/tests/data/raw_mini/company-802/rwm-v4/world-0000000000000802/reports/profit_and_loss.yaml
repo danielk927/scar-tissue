@@ -1,0 +1,34 @@
+report: Profit and Loss
+company: Fernhill Design Studio
+period: through day 60
+period_start_date: '2026-03-01'
+period_end_date: '2026-04-30'
+currency: USD
+generated_from: world-0000000000000802
+full_period:
+  lines:
+  - section: Income
+    line: Revenue
+    amount: '12500.00'
+  - section: Cost of sales
+    line: Cost of goods and job costs
+    amount: '4800.00'
+  - section: Operating expenses
+    line: Wages
+    amount: '0.00'
+  - section: Operating expenses
+    line: Operating expenses
+    amount: '608.65'
+  - section: Operating expenses
+    line: Depreciation
+    amount: '250.00'
+  - section: Operating expenses
+    line: Bad debts
+    amount: '0.00'
+  - section: Other
+    line: Interest
+    amount: '0.00'
+  - section: Other
+    line: Income tax
+    amount: '0.00'
+  net_profit: '6841.35'

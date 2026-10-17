@@ -1,0 +1,210 @@
+- id: je-open-00001
+  doc_number: JE-9001
+  purpose: opening_equity
+  txn_sim_day: 0
+  txn_date: '2026-01-01'
+  lines:
+  - line_num: 1
+    account_id: acct-checking
+    account_name: Business Checking
+    description: Opening cash.
+    debit_amount: '50000.00'
+    credit_amount: '0.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  - line_num: 2
+    account_id: acct-opening-equity
+    account_name: Opening Balance Equity
+    description: Owner contribution.
+    debit_amount: '0.00'
+    credit_amount: '50000.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  project_id: null
+  memo: Owner's opening cash contribution.
+  provenance_note: sim:0000000000000801:je-open-00001
+  sim_obligation_id: null
+  sim_payment_id: null
+  sim_event_ids: []
+- id: je-payroll-00001
+  doc_number: JE-9002
+  purpose: wage_accrual
+  txn_sim_day: 15
+  txn_date: '2026-01-16'
+  lines:
+  - line_num: 1
+    account_id: acct-manager-wages
+    account_name: Project Manager Wages
+    description: Project manager payroll
+    debit_amount: '1500.00'
+    credit_amount: '0.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  - line_num: 2
+    account_id: acct-wages-payable
+    account_name: Wages Payable
+    description: Wages owed.
+    debit_amount: '0.00'
+    credit_amount: '1500.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  project_id: null
+  memo: Biweekly wages earned by Ada Holloway.
+  provenance_note: sim:0000000000000801:je-payroll-00001
+  sim_obligation_id: obligation-00007
+  sim_payment_id: null
+  sim_event_ids: []
+- id: je-payment-00001
+  doc_number: JE-9003
+  purpose: wage_payment
+  txn_sim_day: 16
+  txn_date: '2026-01-17'
+  lines:
+  - line_num: 1
+    account_id: acct-wages-payable
+    account_name: Wages Payable
+    description: Wages paid.
+    debit_amount: '1500.00'
+    credit_amount: '0.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  - line_num: 2
+    account_id: acct-checking
+    account_name: Business Checking
+    description: Payroll cash out.
+    debit_amount: '0.00'
+    credit_amount: '1500.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  project_id: null
+  memo: Wages paid to Ada Holloway.
+  provenance_note: sim:0000000000000801:je-payment-00001
+  sim_obligation_id: obligation-00007
+  sim_payment_id: payment-00001
+  sim_event_ids: []
+- id: je-cogs-00001
+  doc_number: JE-9004
+  purpose: cost_of_goods
+  txn_sim_day: 19
+  txn_date: '2026-01-20'
+  lines:
+  - line_num: 1
+    account_id: acct-cogs
+    account_name: Cost of Goods Sold
+    description: Cost of goods delivered.
+    debit_amount: '166.05'
+    credit_amount: '0.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  - line_num: 2
+    account_id: acct-inventory
+    account_name: Inventory Asset
+    description: Stock released from inventory.
+    debit_amount: '0.00'
+    credit_amount: '166.05'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  project_id: null
+  memo: Cost of 27 units delivered.
+  provenance_note: sim:0000000000000801:je-cogs-00001
+  sim_obligation_id: null
+  sim_payment_id: null
+  sim_event_ids: []
+- id: je-labor-00001
+  doc_number: JE-9005
+  purpose: wip_capitalization
+  txn_sim_day: 22
+  txn_date: '2026-01-23'
+  lines:
+  - line_num: 1
+    account_id: acct-wip
+    account_name: Work in Progress
+    description: Supervision carried as job cost
+    debit_amount: '262.50'
+    credit_amount: '0.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  - line_num: 2
+    account_id: acct-manager-wages
+    account_name: Project Manager Wages
+    description: No longer carried as general overhead
+    debit_amount: '0.00'
+    credit_amount: '262.50'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  project_id: proj-00001
+  memo: Supervision time capitalized to the job it was spent on.
+  provenance_note: sim:0000000000000801:je-labor-00001
+  sim_obligation_id: null
+  sim_payment_id: null
+  sim_event_ids: []
+- id: je-labor-00002
+  doc_number: JE-9006
+  purpose: wip_release
+  txn_sim_day: 40
+  txn_date: '2026-02-10'
+  lines:
+  - line_num: 1
+    account_id: acct-cogs
+    account_name: Cost of Goods Sold
+    description: Cost of work accepted
+    debit_amount: '262.50'
+    credit_amount: '0.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  - line_num: 2
+    account_id: acct-manager-wages
+    account_name: Project Manager Wages
+    description: No longer carried as general overhead
+    debit_amount: '0.00'
+    credit_amount: '262.50'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  project_id: proj-00001
+  memo: Supervision time attributed to the job it was spent on.
+  provenance_note: sim:0000000000000801:je-labor-00002
+  sim_obligation_id: null
+  sim_payment_id: null
+  sim_event_ids: []
+- id: je-interest-00001
+  doc_number: JE-9007
+  purpose: interest_accrual
+  txn_sim_day: 45
+  txn_date: '2026-02-15'
+  lines:
+  - line_num: 1
+    account_id: acct-interest-expense
+    account_name: Interest Expense
+    description: Interest accrued.
+    debit_amount: '42.10'
+    credit_amount: '0.00'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  - line_num: 2
+    account_id: acct-accrued-interest
+    account_name: Accrued Interest
+    description: Interest owed.
+    debit_amount: '0.00'
+    credit_amount: '42.10'
+    customer_id: null
+    vendor_id: null
+    document_id: null
+  project_id: null
+  memo: Interest accrued on the line of credit.
+  provenance_note: sim:0000000000000801:je-interest-00001
+  sim_obligation_id: null
+  sim_payment_id: null
+  sim_event_ids: []
