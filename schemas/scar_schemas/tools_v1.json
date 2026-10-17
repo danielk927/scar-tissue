@@ -1,0 +1,45 @@
+[
+  {"type": "function", "function": {
+    "name": "get_accounts",
+    "description": "List the chart of accounts for the current company: account_id, name, account_type.",
+    "parameters": {"type": "object", "properties": {}, "required": []}}},
+  {"type": "function", "function": {
+    "name": "get_vendors",
+    "description": "List vendors for the current company, optionally filtered by a case-insensitive name substring.",
+    "parameters": {"type": "object", "properties": {
+      "name_contains": {"type": "string"}}, "required": []}}},
+  {"type": "function", "function": {
+    "name": "get_transactions",
+    "description": "List transactions for the current company, ordered by txn_date then txn_id. Dates are inclusive, format YYYY-MM-DD. Returns at most `limit` rows (default 100).",
+    "parameters": {"type": "object", "properties": {
+      "start_date": {"type": "string"},
+      "end_date": {"type": "string"},
+      "account_id": {"type": "string"},
+      "vendor_id": {"type": "string"},
+      "min_amount": {"type": "number"},
+      "max_amount": {"type": "number"},
+      "limit": {"type": "integer", "minimum": 1, "maximum": 500}}, "required": []}}},
+  {"type": "function", "function": {
+    "name": "sql_query",
+    "description": "Run one read-only SQL SELECT over ledger.accounts, ledger.vendors and ledger.transactions. Rows are automatically restricted to the current company. Returns at most 200 rows.",
+    "parameters": {"type": "object", "properties": {
+      "sql": {"type": "string"}}, "required": ["sql"]}}},
+  {"type": "function", "function": {
+    "name": "create_journal_entry",
+    "description": "Record one journal entry for the current company in a sandbox. Total debits must equal total credits. Returns entry_id.",
+    "parameters": {"type": "object", "properties": {
+      "entry_date": {"type": "string"},
+      "lines": {"type": "array", "items": {"type": "object", "properties": {
+        "account_id": {"type": "string"},
+        "debit": {"type": "number"},
+        "credit": {"type": "number"},
+        "memo": {"type": "string"}}, "required": ["account_id"]}}},
+      "required": ["entry_date", "lines"]}}},
+  {"type": "function", "function": {
+    "name": "submit_answer",
+    "description": "Submit the final answer and end the task. Use `number` for numeric questions, `ids` for questions asking which transactions or vendors, and `entry_ids` after recording journal entries. Call exactly once.",
+    "parameters": {"type": "object", "properties": {
+      "number": {"type": "number"},
+      "ids": {"type": "array", "items": {"type": "string"}},
+      "entry_ids": {"type": "array", "items": {"type": "string"}}}, "required": []}}}
+]
