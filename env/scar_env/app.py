@@ -8,6 +8,7 @@ from .config import get_settings
 from .db import Database
 from .errors import install_error_handlers
 from .routes import companies, learn, loop, tasks, tools, verify
+from .tools import harden_sql_tool
 
 
 def create_app(database_url: str | None = None) -> FastAPI:
@@ -17,6 +18,8 @@ def create_app(database_url: str | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         db.open()
+        with db.conn() as conn:
+            harden_sql_tool(conn)
         yield
         db.close()
 
