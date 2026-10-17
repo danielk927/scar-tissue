@@ -20,6 +20,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter, MaxNLocator
+from matplotlib.transforms import blended_transform_factory
 from scar_schemas.models import GenerationRecord, GenStatus
 
 from . import REPO_ROOT
@@ -125,7 +126,7 @@ def _end_label_positions(ends: list[float], gap: float, top: float) -> list[floa
 
 def write_chart(cells: list[Cell], path: Path) -> None:
     """Line of the mean per arm with a min-max band. A legend names every arm; arms that reach the last generation
-    also get a direct end label (on a leader line when labels had to be spread apart)."""
+    also get a direct end label on a leader line, spread apart where labels would collide."""
     arms = sorted({c.arm for c in cells})
     last = max(c.generation for c in cells)
     lo, hi = 100 * min(c.min for c in cells), 100 * max(c.max for c in cells)
@@ -168,11 +169,23 @@ def write_chart(cells: list[Cell], path: Path) -> None:
 
         ends.sort()
         heights = _end_label_positions([y for y, _ in ends], gap=0.06 * (ymax - ymin), top=ymax)
+        # Labels sit just right of the plot area (x in axes units): the same geometry for any generation count.
+        label_coords = blended_transform_factory(ax.transAxes, ax.transData)
         for (y, arm), label_y in zip(ends, heights, strict=True):
-            ax.plot([last + 0.1, last + 0.22], [y, label_y], color=MUTED, linewidth=0.6, clip_on=False, zorder=2)
-            ax.text(last + 0.26, label_y, f"{arm}  {y:.1f}%", color=INK_2, va="center", ha="left", fontsize=8.5)
+            ax.annotate(
+                f"{arm}  {y:.1f}%",
+                xy=(last, y),
+                xytext=(1.035, label_y),
+                textcoords=label_coords,
+                color=INK_2,
+                va="center",
+                ha="left",
+                fontsize=8.5,
+                arrowprops={"arrowstyle": "-", "color": MUTED, "linewidth": 0.6, "shrinkA": 3, "shrinkB": 7},
+            )
 
-        ax.set_xlim(-0.2, last + 0.2)
+        margin = 0.05 * max(last, 1)
+        ax.set_xlim(-margin, last + margin)
         ax.set_ylim(ymin, ymax)
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.0f}%"))

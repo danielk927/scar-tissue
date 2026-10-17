@@ -5,6 +5,7 @@ description = "Scar Tissue env service (Person 1): ledger, tasks, tools, verifie
 requires-python = ">=3.11"
 dependencies = [
     "scar-schemas",
+    "scar-experiments",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "psycopg[binary,pool]>=3.2",
@@ -20,6 +21,7 @@ dev = ["pytest>=8", "ruff>=0.6", "httpx2>=2.13"]
 
 [tool.uv.sources]
 scar-schemas = { path = "../schemas", editable = true }
+scar-experiments = { path = "../experiments", editable = true }
 
 [build-system]
 requires = ["hatchling"]
