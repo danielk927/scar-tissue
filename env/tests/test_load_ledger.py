@@ -38,41 +38,12 @@ REAL = Path(
 )
 
 # docs/DATASET.md, "Split (Section 9.1)"
-REAL_EVAL = {
-    f"company-{n:03d}"
-    for n in (
-        1,
-        2,
-        3,
-        11,
-        15,
-        17,
-        22,
-        23,
-        25,
-        26,
-        27,
-        33,
-        34,
-        39,
-        45,
-        48,
-        49,
-        50,
-        52,
-        62,
-        74,
-        77,
-        79,
-        80,
-        82,
-        83,
-        85,
-        94,
-        95,
-        100,
-    )
-}
+REAL_EVAL = set(
+    "company-001 company-002 company-003 company-011 company-015 company-017 company-022 company-023 company-025"
+    " company-026 company-027 company-033 company-034 company-039 company-045 company-048 company-049 company-050"
+    " company-052 company-062 company-074 company-077 company-079 company-080 company-082 company-083 company-085"
+    " company-094 company-095 company-100".split()
+)
 
 # SPEC 9.5 anom.duplicate_payments: every pair with the same vendor_id and amount and dates <= 3 days apart,
 # as (earlier txn_id, later txn_id); same-day pairs are ordered by txn_id.

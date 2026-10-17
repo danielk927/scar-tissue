@@ -417,3 +417,31 @@ Composition:
 | train | 15 | 15 | 7 | 7 | 8 | 15 | 3 | 27 / 19 / 24 | 5 |
 
 Eval has only 1 of the 16 recurring-services companies; the spec forbids re-running with another seed, so this is just noted.
+
+## Loaded ledger (P1-02, P1-03)
+
+Loaded by `env/scar_env/load_ledger.py` (`uv run python -m scar_env.load_ledger --data-dir <hackathon-100 dir>`), which truncates and reloads all ledger tables in one transaction.
+Every modification of the raw data is listed in `docs/DATASET_CHANGES.md`.
+
+| table | rows |
+|---|---:|
+| `ledger.companies` | 100 (30 eval, 70 train, as in "Split") |
+| `ledger.accounts` | 3,800 (3,700 raw plus one added "Prepaid Expenses" per company) |
+| `ledger.vendors` | 821 |
+| `ledger.transactions` | 160,779 (159,790 mapped from the raw files plus 989 planted) |
+| `ledger.planted_anomalies` | 989 (5 to 15 per company, median 10; 328 in eval companies, 661 in train) |
+
+- Excluding planted rows, every per-company figure in the Companies table (name, industry, txn rows, bills, vendors, first and last txn date, split) matches the loaded ledger exactly.
+- Planted copies are dated 1 to 3 days after their original (+1: 333, +2: 317, +3: 339) and never extend a company's date range.
+- They sit on whatever account the original bill used: 626 on expense accounts, 355 on asset accounts (inventory, WIP, equipment) and 8 on Accrued Interest.
+- The Section 9.5 duplicate-payment rule over the loaded ledger flags 12,063 later rows: the 11,025 natural matches, the 989 planted copies, and 49 natural bills that match only because a planted copy precedes them by 3 days or less.
+- The P&L reconciliation (planted rows excluded), the split, the row counts and the foreign keys are asserted by `test_real_dataset` in `env/tests/test_load_ledger.py` (run with `SCAR_REAL_DATA_TESTS=1`).
+- A load takes about 35 seconds, almost all of it parsing 147 MB of YAML with libyaml; two consecutive loads give identical table checksums:
+
+| table | md5 checksum (rows as text, primary-key order) |
+|---|---|
+| `companies` | `9e48a212d74453b3c39ed4894169d750` |
+| `accounts` | `6ab8ff0ca0a6699d0952f51cd4b998ab` |
+| `vendors` | `d47f535bf823c878151f2a1e2c11dc54` |
+| `transactions` | `7c7dcfe55f41f402e283597fa58540f1` |
+| `planted_anomalies` | `b96abbd445f98ca4eed187e61f5496dc` |

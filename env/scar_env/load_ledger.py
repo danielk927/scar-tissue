@@ -279,7 +279,7 @@ def update_changes_doc(path: Path, markdown: str) -> None:
     _, end, tail = rest.partition(CHANGES_END)
     if not (begin and end):
         raise ValueError(f"{path} has no generated-section markers")
-    path.write_text(f"{head}{CHANGES_BEGIN}\n{markdown}\n{CHANGES_END}{tail}")
+    path.write_text(f"{head}{CHANGES_BEGIN}\n\n{markdown}\n\n{CHANGES_END}{tail}")
 
 
 def main(argv: list[str] | None = None) -> None:
