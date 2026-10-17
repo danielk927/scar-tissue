@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  --good: #0ca30c;
+  --good-text: #006300;
+  --critical: #d03b3b;
+  --accent: #2a78d6;
+  /* arm colors: categorical slots 1-5, fixed per arm (validated, docs in dataviz palette) */
+  --arm-D: #2a78d6;
+  --arm-C: #eb6834;
+  --arm-B: #1baf7a;
+  --arm-A: #eda100;
+  --arm-E: #e87ba4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --good-text: #0ca30c;
+    --critical: #e66767;
+    --accent: #3987e5;
+    --arm-D: #3987e5;
+    --arm-C: #d95926;
+    --arm-B: #199e70;
+    --arm-A: #c98500;
+    --arm-E: #d55181;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface-1: #1a1a19;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+  --good-text: #0ca30c;
+  --critical: #e66767;
+  --accent: #3987e5;
+  --arm-D: #3987e5;
+  --arm-C: #d95926;
+  --arm-B: #199e70;
+  --arm-A: #c98500;
+  --arm-E: #d55181;
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface-1);
+  --color-ink: var(--text-primary);
+  --color-ink-2: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-line: var(--border);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--page);
+  color: var(--text-primary);
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
