@@ -1,0 +1,40 @@
+[project]
+name = "scar-env"
+version = "0.1.0"
+description = "Scar Tissue env service (Person 1): ledger, tasks, tools, verifier, mutator, simulator"
+requires-python = ">=3.11"
+dependencies = [
+    "scar-schemas",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "psycopg[binary,pool]>=3.2",
+    "pydantic>=2.7",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "sentry-sdk>=2.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6", "httpx2>=2.13"]
+
+[tool.uv.sources]
+scar-schemas = { path = "../schemas", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["scar_env"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+# UP042: shared enums are (str, Enum). UP017: spec 7.4 writes datetime.now(timezone.utc).
+ignore = ["UP042", "UP017"]
