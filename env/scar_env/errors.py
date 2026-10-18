@@ -1,9 +1,13 @@
 """HTTP errors with the SPEC 7.4 body: {"error": "<short_code>", "detail": "<human-readable>"}."""
 
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+log = logging.getLogger(__name__)
 
 
 class ApiError(Exception):
@@ -31,3 +35,10 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"error": "invalid_input", "detail": str(exc.errors())})
+
+    @app.exception_handler(Exception)
+    async def _unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+        # Starlette sends this response, then re-raises so the server also sees the error.
+        log.error("unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
+        detail = f"{type(exc).__name__}: {exc}"
+        return JSONResponse(status_code=500, content={"error": "internal_error", "detail": detail})

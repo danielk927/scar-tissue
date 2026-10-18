@@ -15,6 +15,7 @@ load_dotenv(REPO_ROOT / ".env")
 class Settings:
     database_url: str
     agent_service_url: str
+    env_service_url: str
     sentry_dsn: str | None
     sentry_environment: str
     reflection_lm_base_url: str | None
@@ -33,6 +34,7 @@ def get_settings() -> Settings:
     return Settings(
         database_url=os.environ.get("DATABASE_URL", "postgresql://scar:scar@localhost:5432/scar"),
         agent_service_url=os.environ.get("AGENT_SERVICE_URL", "http://localhost:8002"),
+        env_service_url=os.environ.get("ENV_SERVICE_URL", "http://localhost:8001"),
         sentry_dsn=_opt("SENTRY_DSN"),
         sentry_environment=os.environ.get("SENTRY_ENVIRONMENT", "hackathon"),
         reflection_lm_base_url=_opt("REFLECTION_LM_BASE_URL"),

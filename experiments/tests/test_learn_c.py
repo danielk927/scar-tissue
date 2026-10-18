@@ -15,8 +15,8 @@ from .factories import NOW, SYSTEM_V1, FakeAgent, FakeEnv, FakeLM, add_failure, 
 HINT = "Always check the date range twice."
 # gepa's default proposal template (strategies/instruction_proposal.py) says this right before it ends.
 REFLECTION_ASK = "Provide the new instructions within ``` blocks."
-# gepa 0.1.4 can finish one iteration past the budget: a parent and a child minibatch (3 each) plus a full valset.
-MAX_OVERSHOOT = 2 * 3 + GEPA_VAL_SIZE
+# Worst-case agent runs in one gepa iteration: a parent and a child minibatch (3 each) plus a full valset.
+ITERATION_COST = 2 * 3 + GEPA_VAL_SIZE
 
 
 def _req(failures, generation=1, seed=0, current="system_v1") -> LearnRequest:
@@ -75,7 +75,11 @@ def test_gepa_mutates_the_prompt_and_stores_the_best(conn):
         )
     ]
     assert "2 candidates, best valset score 1.000 (seed prompt 0.000)" in result.notes
-    assert f"{len(agent.requests)} agent runs" in result.notes
+    runs = len(agent.requests)
+    assert (
+        f"{runs} of {GEPA_MAX_METRIC_CALLS} budgeted agent runs ({GEPA_MAX_METRIC_CALLS - runs} unspent;"
+        in result.notes
+    )
 
     # Re-calling returns the stored result without any agent, LM or env call.
     again_agent, again_lm, again_env = FakeAgent(conn, lambda *_: True), _hinting_lm(), FakeEnv(conn)
@@ -89,21 +93,26 @@ def test_adapter_subclasses_gepa_adapter():
     assert AgentPromptAdapter.propose_new_texts is None
 
 
-def test_gepa_stays_within_metric_call_budget(conn):
+@pytest.mark.parametrize("salt", ["a", "b", "c", "d", "e"])
+def test_gepa_never_exceeds_the_metric_call_budget(conn, salt):
     failures = [add_failure(conn, arm="C") for _ in range(3)]
     insert_pool(conn, 120)
     counter = iter(range(10_000))
     lm = FakeLM(lambda p: f"```\nPrompt variant {next(counter)}.\n```")
 
     def coin(text, task):  # deterministic pseudo-random pass/fail, so some proposals win and trigger valset runs
-        return int(hashlib.sha256(f"{text}|{task.task_id}".encode()).hexdigest(), 16) % 2 == 0
+        return int(hashlib.sha256(f"{salt}|{text}|{task.task_id}".encode()).hexdigest(), 16) % 2 == 0
 
     agent = FakeAgent(conn, passes=coin)
     result = learn_c(conn, _req(failures), lm, agent, FakeEnv(conn), SYSTEM_V1)
 
     runs = len(agent.requests)
-    assert GEPA_MAX_METRIC_CALLS <= runs <= GEPA_MAX_METRIC_CALLS + MAX_OVERSHOOT
-    assert f"{runs} agent runs" in result.notes
+    assert runs <= GEPA_MAX_METRIC_CALLS
+    assert runs + ITERATION_COST > GEPA_MAX_METRIC_CALLS  # it only stopped once a worst-case iteration no longer fit
+    assert (
+        f"{runs} of {GEPA_MAX_METRIC_CALLS} budgeted agent runs ({GEPA_MAX_METRIC_CALLS - runs} unspent;"
+        in result.notes
+    )
     # The expensive path ran: at least one proposal won and was scored on the whole valset.
     per_version = Counter(r.prompt_version for r in agent.requests)
     assert sum(1 for n in per_version.values() if n >= GEPA_VAL_SIZE) >= 2
@@ -263,7 +272,7 @@ def test_sporadic_infrastructure_failures_score_zero_and_are_reported(conn):
     )
     result = learn_c(conn, _req(failures), _hinting_lm(), agent, FakeEnv(conn), SYSTEM_V1)
     infra = sum(r.task_id in flaky for r in agent.requests)
-    assert infra > 0 and f"({infra} ended in model_error, tool_error or timeout)" in result.notes
+    assert infra > 0 and f"; {infra} ended in model_error, tool_error or timeout)" in result.notes
     assert HINT in get_prompt_version(conn, "C-s0-g1").text
 
 

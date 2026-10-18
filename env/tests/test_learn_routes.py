@@ -1,17 +1,20 @@
 """POST /learn/B and /learn/C wiring: dependencies, SPEC 7.4 error bodies, and a happy path for each with fakes
 (the learn-step behavior itself is tested in experiments/tests)."""
 
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
 import scar_experiments.prompts
+from fastapi.testclient import TestClient
 from psycopg.types.json import Jsonb
 from scar_experiments.errors import DependencyError
 from scar_schemas.constants import GEPA_TRAIN_EXTRA, GEPA_VAL_SIZE
 from scar_schemas.ids import new_id
 from scar_schemas.models import ExpectedAnswer, FailureRecord, RunResult, Task
 
+from scar_env.app import create_app
 from scar_env.routes import learn
 from scar_env.store import store_task
 
@@ -197,7 +200,7 @@ def test_learn_route_errors_use_spec_bodies(client, conn):
     assert (r.status_code, r.json()["error"]) == (503, "dependency_unavailable")
     assert "connection refused" in r.json()["detail"]
 
-    # No train pool yet: a state conflict. An eval-split failure: the eval-leakage guard, as a 500 with the SPEC body.
+    # No train pool yet: a state conflict.
     c_failure = _failure(conn, arm="C")
     _task(conn, origin="variant", parent_failure_id=c_failure.failure_id)
     r = client.post("/learn/C", json=_body("C", [c_failure.failure_id]))
@@ -205,10 +208,24 @@ def test_learn_route_errors_use_spec_bodies(client, conn):
         409,
         {"error": "conflict", "detail": "train pool has 0 usable tasks; GEPA needs 100"},
     )
+
+
+def test_unexpected_errors_become_a_logged_500_with_the_spec_body(db_url, conn, caplog):
+    """The app's catch-all handler (scar_env.errors), reached here by the eval-leakage guard's plain RuntimeError."""
     leaked = _failure(conn, split="eval")
-    r = client.post("/learn/B", json=_body("B", [leaked.failure_id]))
-    assert (r.status_code, r.json()["error"]) == (500, "internal_error")
-    assert r.json()["detail"].startswith("eval leakage: 1 non-train tasks")
+    # Starlette re-raises after sending the 500, so the test client must not raise to let us see the response.
+    with TestClient(create_app(db_url), raise_server_exceptions=False) as client:
+        _override(client, lambda p: "When x, do y.")
+        with caplog.at_level(logging.ERROR, logger="scar_env.errors"):
+            r = client.post("/learn/B", json=_body("B", [leaked.failure_id]))
+    assert r.status_code == 500
+    assert r.json() == {
+        "error": "internal_error",
+        "detail": f"RuntimeError: eval leakage: 1 non-train tasks, e.g. {leaked.task_id}",
+    }
+    (record,) = [rec for rec in caplog.records if rec.name == "scar_env.errors"]
+    assert record.getMessage() == "unhandled error on POST /learn/B"
+    assert record.exc_info[0] is RuntimeError and record.exc_info[2] is not None
 
 
 def test_learn_c_route(client, conn):

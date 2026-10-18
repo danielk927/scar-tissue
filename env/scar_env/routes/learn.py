@@ -1,7 +1,6 @@
 """POST /learn/B and POST /learn/C (SPEC 9.10). The learn-steps live in scar_experiments; this module builds their
 dependencies from settings. /learn/C runs GEPA (about GEPA_MAX_METRIC_CALLS agent runs) and can take many minutes."""
 
-import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Annotated
@@ -46,7 +45,7 @@ def get_agent_client() -> AgentClient:
 
 
 def get_env_client() -> EnvClient:
-    return EnvClient(os.environ.get("ENV_SERVICE_URL", "http://localhost:8001"))
+    return EnvClient(get_settings().env_service_url)
 
 
 ReflectionLMDep = Annotated[ReflectionLM, Depends(get_reflection_lm)]
@@ -59,7 +58,7 @@ EnvDep = Annotated[EnvClient, Depends(get_env_client)]
 def _learn_conn(db: Database) -> Iterator[psycopg.Connection]:
     """A dedicated autocommit connection, so a learn-step that runs for minutes commits each lesson and candidate as
     it goes instead of holding a pooled connection in one long transaction. Maps learn-step errors to SPEC 7.4
-    bodies; any other RuntimeError (such as the eval-leakage guard) becomes a 500 with the same body."""
+    bodies; anything else (such as the eval-leakage guard) reaches the app's catch-all 500 handler."""
     try:
         with psycopg.connect(db.url, autocommit=True) as conn:
             yield conn
@@ -73,8 +72,6 @@ def _learn_conn(db: Database) -> Iterator[psycopg.Connection]:
         raise ApiError(503, "dependency_unavailable", str(e)) from e
     except psycopg.OperationalError as e:
         raise ApiError(503, "database_unavailable", str(e)) from e
-    except RuntimeError as e:
-        raise ApiError(500, "internal_error", str(e)) from e
 
 
 @router.post("/learn/B")

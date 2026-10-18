@@ -1,7 +1,7 @@
 """Learn-step C, GEPA (SPEC 9.10, F17, P1-13): optimize the system prompt with `gepa` (pinned 0.1.4) on this
 generation's variants plus train-pool tasks, scoring candidates with real agent runs.
 
-`conn` must be an autocommit connection. A GEPA run makes about GEPA_MAX_METRIC_CALLS agent runs and can take many
+`conn` must be an autocommit connection. A GEPA run makes at most GEPA_MAX_METRIC_CALLS agent runs and can take many
 minutes.
 """
 
@@ -36,6 +36,7 @@ from .errors import DependencyError, InvalidRequestError, StateConflictError
 from .prompts import candidate_version_id, learned_result, prompt_text, store_prompt_version
 
 COMPONENT = "system_prompt"
+MINIBATCH_SIZE = 3  # gepa's reflection minibatch (its default), passed explicitly so the budget math uses it
 # Runs that ended for infrastructure reasons, not the agent's choices (the same set SPEC 9.4 never learns from).
 INFRA_STOP_REASONS = frozenset({"model_error", "tool_error", "timeout"})
 
@@ -139,6 +140,20 @@ class _ReflectionGuard:
         return self.error is not None
 
 
+class _StrictBudget:
+    """gepa stopper that keeps agent runs at or under `budget`. gepa checks stoppers only between iterations, and one
+    iteration costs at most a parent and a child minibatch plus a full valset run if the child is accepted, so stop
+    as soon as the runs so far (counted by the adapter) plus that worst case would pass the budget."""
+
+    def __init__(self, adapter: AgentPromptAdapter, valset_size: int, budget: int):
+        self.adapter = adapter
+        self.iteration_cost = 2 * MINIBATCH_SIZE + valset_size
+        self.budget = budget
+
+    def __call__(self, _state: object) -> bool:
+        return self.adapter.agent_runs + self.iteration_cost > self.budget
+
+
 class _GepaLog:
     """Routes gepa's progress messages to logging (its default logger prints to stdout)."""
 
@@ -202,6 +217,9 @@ def learn_c(
     trainset, valset = gepa_sets(conn, req, [f.failure_id for f in failures], env)
     assert_train_only([t.task_id for t in trainset + valset], conn)
 
+    # The seed prompt's valset run happens before gepa checks any stopper, so it must fit in the budget on its own.
+    if len(valset) > GEPA_MAX_METRIC_CALLS:
+        raise RuntimeError(f"valset of {len(valset)} tasks exceeds the GEPA budget of {GEPA_MAX_METRIC_CALLS} runs")
     adapter = AgentPromptAdapter(conn, agent, req)
     guard = _ReflectionGuard(reflection_lm)
     result = gepa.optimize(
@@ -210,8 +228,9 @@ def learn_c(
         valset=valset,
         adapter=adapter,
         reflection_lm=guard,
+        reflection_minibatch_size=MINIBATCH_SIZE,
         max_metric_calls=GEPA_MAX_METRIC_CALLS,
-        stop_callbacks=guard.stop,
+        stop_callbacks=[guard.stop, _StrictBudget(adapter, len(valset), GEPA_MAX_METRIC_CALLS)],
         seed=req.seed,
         logger=_GepaLog(),
     )
@@ -235,8 +254,9 @@ def learn_c(
     scores = result.val_aggregate_scores
     notes = (
         f"GEPA: {len(result.candidates)} candidates, best valset score {scores[result.best_idx]:.3f}"
-        f" (seed prompt {scores[0]:.3f}); {adapter.agent_runs} agent runs"
-        f" ({adapter.infra_failures} ended in model_error, tool_error or timeout);"
+        f" (seed prompt {scores[0]:.3f}); {adapter.agent_runs} of {GEPA_MAX_METRIC_CALLS} budgeted agent runs"
+        f" ({GEPA_MAX_METRIC_CALLS - adapter.agent_runs} unspent;"
+        f" {adapter.infra_failures} ended in model_error, tool_error or timeout);"
         f" trainset {len(trainset)} ({len(trainset) - GEPA_TRAIN_EXTRA} variants), valset {len(valset)}"
     )
     return LearnResult(prompt_version=stored.prompt_version, notes=notes)
