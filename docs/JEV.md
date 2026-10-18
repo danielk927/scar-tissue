@@ -146,7 +146,7 @@ These are raised after retries are used up (src: client docstrings; offline 429 
 - **Model reported by the API:** `jev-1.14.0` on every call (`response.model`), matching the pin.
 - **Latency:** 70–160 ms per triage call, sequential (3 calls on real failed runs); `/failures/mine` triaged 18 failures in 0.6 s at `JEV_CONCURRENCY = 8`, and 9 more in 1.2 s on a re-mine.
 - **Real mine (local stack, arm D, seed 7, generation 1, 40 traffic runs on `base`):** 27 failures triaged, 11 included. Causes: `gave_up` (no_submit and model_error runs), `reasoning_error`, `wrong_final_format`, `wrong_tool`, one `environment_error`. Excluded by rule: 5 `stop_reason_model_error`, 2 `stop_reason_timeout`, 1 `cause_environment_error`, 8 `learnable_p_below_threshold`. A second mine after 10 more runs triaged only the 9 new failures (9 Jev calls) and kept the 18 earlier records unchanged. These records are `fixtures/failures_sample.jsonl`.
-- **Our org's rate limits:** not read yet; they are only shown at https://console.typesafe.ai (needs Person 2's login). No 429 seen at 8 concurrent calls.
+- **Our org's rate limits:** UNKNOWN (only shown in the TypeSafe developer console; not checked). No 429 seen at 8 concurrent triage calls; 27 calls in total.
 
 ## Tev1 fallback
 
@@ -203,9 +203,21 @@ def triage(state: dict) -> tuple[str, float, float, dict[str, float], str]:
     # TypeSafeError subclasses (rate limit, auth, timeout, ...) propagate -> service returns 503
 ```
 
+## Spot-check result (P2-07, labeled by Person 2 on 2026-10-18)
+
+| Measure | Agreement |
+|---|---|
+| Failure cause (exact match) | **17/20 (85%)** |
+| Learnable yes/no (Jev yes = `learnable_p` ≥ 0.6) | 10/20 (50%) |
+| Final inclusion decision (SPEC 9.4 rule applied to each label set) | 14/20 (70%) |
+
+- **Cause:** all 3 disagreements are `model_error` runs that Jev called `gave_up` and Person 2 called `environment_error`. The stop-reason rule excludes those runs either way, so the disagreement does not change training data.
+- **Inclusion:** Jev included 9; Person 2 would include 15. Every failure Jev included, Person 2 would include too (9/9, no false positives), but Jev excluded 6 that Person 2 judged learnable (#7, #11, #13, #14, #19, #20). Mostly `no_submit` runs that wrote the answer as text, with `learnable_p` 0.35–0.51 (below `INCLUDE_LEARNABLE_P` = 0.6).
+- **Takeaway:** Jev's triage is conservative: precise but with lower recall, so it under-feeds training rather than polluting it. Lowering `INCLUDE_LEARNABLE_P` (a shared constant; SPEC 8.9) to about 0.35 would have admitted all 6 misses in this sample, with no new false positives. That is a team decision, and the sample is only 20.
+
 ## Spot check (P2-07)
 
-Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `random.Random(2026).sample(..., 20)` and sorted by run_id. All are real `base` traffic runs (arm D, seed 7, generation 1) triaged by `jev-1.14.0` on 2026-10-18. For each, write your own cause (one of: wrong_tool, bad_tool_args, reasoning_error, wrong_final_format, gave_up, environment_error, ambiguous_task, other) and whether a better model could have answered (yes/no), without looking at Jev's answer first if you can. The full transcript of any run is in the fixture, or at `/runs/<run_id>` in the web app.
+Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `random.Random(2026).sample(..., 20)` and sorted by run_id. All are real `base` traffic runs (arm D, seed 7, generation 1) triaged by `jev-1.14.0` on 2026-10-18. Person 2 labeled each with a cause (one of: wrong_tool, bad_tool_args, reasoning_error, wrong_final_format, gave_up, environment_error, ambiguous_task, other) and whether a better model could have answered (yes/no). The full transcript of any run is in the fixture. The results are in "Spot-check result" above.
 
 ### 1. `run_0953d05c61d7478189c9a25c50ace73f`
 
@@ -214,7 +226,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `model_error` · **final answer:** `null`
 - **Verifier:** not submitted: model_error
 - **Jev:** cause `gave_up` (0.82), learnable_p 0.72, included: no, stop_reason_model_error
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `environment_error` · learnable no
 
 ### 2. `run_12d7ef5cdc1640809e2b3fd1694813d5`
 
@@ -223,7 +235,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `submitted` · **final answer:** `{"ids": ["company-073:planted-dup-0008:1"]}`
 - **Verifier:** ids: expected 2, got 1 distinct; missing ['company-073:planted-dup-0001:1']; extra []
 - **Jev:** cause `reasoning_error` (0.89), learnable_p 0.82, included: yes
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `reasoning_error` · learnable yes
 
 ### 3. `run_23eb9a50a29b482fba75ad9ef047ca6b`
 
@@ -232,7 +244,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `timeout` · **final answer:** `null`
 - **Verifier:** not submitted: timeout
 - **Jev:** cause `environment_error` (0.37), learnable_p 0.68, included: no, cause_environment_error
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `environment_error` · learnable no
 
 ### 4. `run_2a9df404d7724f88836438ce4fded1df`
 
@@ -241,7 +253,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `model_error` · **final answer:** `null`
 - **Verifier:** not submitted: model_error
 - **Jev:** cause `gave_up` (0.94), learnable_p 0.87, included: no, stop_reason_model_error
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `environment_error` · learnable no
 
 ### 5. `run_4448aa9394ee47949141b424dc933ab0`
 
@@ -250,7 +262,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `no_submit` · **final answer:** `null`
 - **Verifier:** not submitted: no_submit
 - **Jev:** cause `gave_up` (0.99), learnable_p 0.89, included: yes
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `gave_up` · learnable yes
 
 ### 6. `run_5d01c00cfee34b5297b098a023632592`
 
@@ -259,7 +271,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `no_submit` · **final answer:** `null`
 - **Verifier:** not submitted: no_submit
 - **Jev:** cause `gave_up` (1.00), learnable_p 0.92, included: yes
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `gave_up` · learnable yes
 
 ### 7. `run_61bac3bf022a4e6f99207046f25279a3`
 
@@ -268,7 +280,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `submitted` · **final answer:** `{"number": 0}`
 - **Verifier:** entry_ids: missing from final_answer
 - **Jev:** cause `wrong_final_format` (0.26), learnable_p 0.46, included: no, learnable_p_below_threshold
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `wrong_final_format` · learnable yes
 
 ### 8. `run_6372fd4d42b64c07a2639c03db63cd3f`
 
@@ -277,7 +289,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `no_submit` · **final answer:** `null`
 - **Verifier:** not submitted: no_submit
 - **Jev:** cause `gave_up` (1.00), learnable_p 0.92, included: yes
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `gave_up` · learnable yes
 
 ### 9. `run_8426c8473cab4913b1cf1bf00ebb887d`
 
@@ -286,7 +298,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `submitted` · **final answer:** `{"ids": []}`
 - **Verifier:** ids: expected 1, got 0 distinct; missing ['company-008:bill-00971:1']; extra []
 - **Jev:** cause `reasoning_error` (0.78), learnable_p 0.86, included: yes
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `reasoning_error` · learnable yes
 
 ### 10. `run_86bcdc6d148844daa775dc39d05451cc`
 
@@ -295,7 +307,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `timeout` · **final answer:** `null`
 - **Verifier:** not submitted: timeout
 - **Jev:** cause `gave_up` (0.61), learnable_p 0.70, included: no, stop_reason_timeout
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `gave_up` · learnable yes
 
 ### 11. `run_a2950aad67eb4cbcbe72bac8466e7ffa`
 
@@ -304,7 +316,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `no_submit` · **final answer:** `null`
 - **Verifier:** not submitted: no_submit
 - **Jev:** cause `gave_up` (0.97), learnable_p 0.40, included: no, learnable_p_below_threshold
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `gave_up` · learnable yes
 
 ### 12. `run_a79bd51aee6744f2a5b493e103b3fd4e`
 
@@ -313,7 +325,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `model_error` · **final answer:** `null`
 - **Verifier:** not submitted: model_error
 - **Jev:** cause `gave_up` (0.93), learnable_p 0.87, included: no, stop_reason_model_error
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `environment_error` · learnable no
 
 ### 13. `run_ac0b5f0358d44d6a9172502a119237b9`
 
@@ -322,7 +334,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `no_submit` · **final answer:** `null`
 - **Verifier:** not submitted: no_submit
 - **Jev:** cause `gave_up` (0.94), learnable_p 0.42, included: no, learnable_p_below_threshold
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `gave_up` · learnable yes
 
 ### 14. `run_bfb16b1a61dd434a8bf438e7d1c05a26`
 
@@ -331,7 +343,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `no_submit` · **final answer:** `null`
 - **Verifier:** not submitted: no_submit
 - **Jev:** cause `gave_up` (0.90), learnable_p 0.35, included: no, learnable_p_below_threshold
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `gave_up` · learnable yes
 
 ### 15. `run_c0ee180d1858447897b92f282930c29e`
 
@@ -340,7 +352,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `submitted` · **final answer:** `{"ids": ["company-051:pbill-00405:1", "company-051:pbill-00406:1", "company-051:pbill-00408:1", "company-051:pbill-00409:1"]}`
 - **Verifier:** ids: expected 7, got 4 distinct; missing ['company-051:pbill-00411:1', 'company-051:pbill-00412:1', 'company-051:pbill-00417:1']; extra []
 - **Jev:** cause `reasoning_error` (0.51), learnable_p 0.84, included: yes
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `reasoning_error` · learnable yes
 
 ### 16. `run_ccacb9708c144c66b8911bbdabb44765`
 
@@ -349,7 +361,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `submitted` · **final answer:** `{"ids": ["company-060:bill-insurance-00187:1", "company-060:bill-software-00186:1", "company-060:je-wageacc-00189:1"]}`
 - **Verifier:** ids: expected 2, got 3 distinct; missing []; extra ['company-060:bill-software-00186:1']
 - **Jev:** cause `reasoning_error` (0.84), learnable_p 0.63, included: yes
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `reasoning_error` · learnable yes
 
 ### 17. `run_d4cbe77d267c4bc58acde822a57fbc0b`
 
@@ -358,7 +370,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `no_submit` · **final answer:** `null`
 - **Verifier:** not submitted: no_submit
 - **Jev:** cause `gave_up` (1.00), learnable_p 0.93, included: yes
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `gave_up` · learnable yes
 
 ### 18. `run_dd652a0187844815a2cdb923ab25bbe4`
 
@@ -367,7 +379,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `submitted` · **final answer:** `{"ids": ["company-008:bill-utilities-01536:1", "company-008:bill-utilities-01616:1", "company-008:bill-operating-01621:1", "company-008:bill-variable-services-01618:1", "company-008:bill-variable-services-01538:1", "company-008:bill-utilities-01537:1", "company-008:bill-utilities-01617:1"]}`
 - **Verifier:** ids: expected 1, got 7 distinct; missing ['company-008:planted-dup-0004:1']; extra ['company-008:bill-operating-01621:1', 'company-008:bill-utilities-01536:1', 'company-008:bill-utilities-01537:1', 'company-008:bill-util…
 - **Jev:** cause `reasoning_error` (0.54), learnable_p 0.92, included: yes
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `reasoning_error` · learnable yes
 
 ### 19. `run_dfa18d53918940eda619fe6ff38071e3`
 
@@ -376,7 +388,7 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `no_submit` · **final answer:** `null`
 - **Verifier:** not submitted: no_submit
 - **Jev:** cause `gave_up` (0.94), learnable_p 0.51, included: no, learnable_p_below_threshold
-- **Human label:** cause = ______ · learnable = ______
+- **Human label (Person 2):** cause `gave_up` · learnable yes
 
 ### 20. `run_ef086ab899754979b818221bf8825ca9`
 
@@ -385,6 +397,4 @@ Twenty triaged failures from `fixtures/failures_sample.jsonl`, picked with `rand
 - **Stop reason:** `no_submit` · **final answer:** `null`
 - **Verifier:** not submitted: no_submit
 - **Jev:** cause `gave_up` (0.92), learnable_p 0.40, included: no, learnable_p_below_threshold
-- **Human label:** cause = ______ · learnable = ______
-
-**Agreement:** not computed yet (fill in the labels; then cause agreement = matching causes / 20, learnable agreement = matching yes/no (Jev yes = learnable_p ≥ 0.6) / 20).
+- **Human label (Person 2):** cause `gave_up` · learnable yes
