@@ -8,7 +8,7 @@ from psycopg_pool import ConnectionPool
 
 
 class Database:
-    def __init__(self, url: str, max_size: int = 20):
+    def __init__(self, url: str, max_size: int = 32):
         self.url = url
         self.pool = ConnectionPool(url, min_size=1, max_size=max_size, open=False)
 
