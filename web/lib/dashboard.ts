@@ -1,4 +1,4 @@
-import { type Arm, ARMS, type GenerationRecord, currentScore } from "./api";
+import { type Arm, ARMS, type GenerationRecord, currentScore, isReportable } from "./api";
 
 export const ARM_LABELS: Record<Arm, string> = {
   A: "A · Frozen base",
@@ -31,32 +31,41 @@ function summarize(generation: number, values: number[]): Point {
   };
 }
 
-/** Eval score of the version in use after each generation, aggregated over seeds (SPEC 2.3). */
-export function buildSeries(records: GenerationRecord[], nGenerations = 4) {
-  const base = records.find((r) => r.generation === 1 && r.parent_eval_score != null)?.parent_eval_score ?? null;
-  let maxGen = nGenerations;
-  const series: Series[] = [];
+/** The shared generation-0 score: a generation-0 eval score if recorded, else generation 1's parent score. */
+export function baseScore(records: GenerationRecord[]): number | null {
+  const g0 = records.find((r) => r.generation === 0 && r.eval_score != null);
+  if (g0) return g0.eval_score;
+  return records.find((r) => r.generation === 1 && r.parent_eval_score != null)?.parent_eval_score ?? null;
+}
 
-  for (const arm of ARMS) {
-    const byGen = new Map<number, number[]>();
-    const seedsWithData = new Set<number>();
-    for (const r of records.filter((x) => x.arm === arm)) {
-      const s = currentScore(r);
-      if (s == null) continue;
-      seedsWithData.add(r.seed);
-      byGen.set(r.generation, [...(byGen.get(r.generation) ?? []), s]);
-      maxGen = Math.max(maxGen, r.generation);
-    }
-    if (base != null && seedsWithData.size) byGen.set(0, Array(seedsWithData.size).fill(base));
-    const points = [...byGen.entries()].sort(([a], [b]) => a - b).map(([g, vs]) => summarize(g, vs));
+/** Eval score of the version in use after each generation, mean/min/max over seeds. Same rules as
+ *  experiments/scar_experiments/report.py, so the dashboard and docs/RESULTS.md never disagree. */
+export function buildSeries(all: GenerationRecord[], nGenerations = 4) {
+  const records = all.filter(isReportable);
+  const base = baseScore(records);
+  const lineages = new Map<string, Map<number, number>>(); // "D-0" -> generation -> score
+  let maxGen = nGenerations;
+
+  for (const r of records) {
+    if (r.arm === "A" || r.generation === 0) continue;
+    const s = currentScore(r);
+    if (s == null) continue; // in progress
+    const key = `${r.arm}-${r.seed}`;
+    if (!lineages.has(key)) lineages.set(key, new Map(base != null ? [[0, base]] : []));
+    lineages.get(key)!.set(r.generation, s);
+    maxGen = Math.max(maxGen, r.generation);
+  }
+
+  const series: Series[] = [];
+  if (base != null) {
+    // arm A never learns: generation 0 repeated (SPEC 9.10)
+    series.push({ arm: "A", points: Array.from({ length: maxGen + 1 }, (_, g) => summarize(g, [base])) });
+  }
+  for (const arm of ARMS.filter((a) => a !== "A")) {
+    const mine = [...lineages.entries()].filter(([k]) => k.startsWith(`${arm}-`)).map(([, v]) => v);
+    const gens = [...new Set(mine.flatMap((m) => [...m.keys()]))].sort((a, b) => a - b);
+    const points = gens.map((g) => summarize(g, mine.filter((m) => m.has(g)).map((m) => m.get(g)!)));
     if (points.length) series.push({ arm, points });
   }
-
-  // Arm A never learns: evaluated once, equal to generation 0 (SPEC 9.10)
-  if (base != null && !series.some((s) => s.arm === "A")) {
-    const points = Array.from({ length: maxGen + 1 }, (_, g) => summarize(g, [base]));
-    series.unshift({ arm: "A", points });
-  }
-  series.sort((a, b) => ARMS.indexOf(a.arm) - ARMS.indexOf(b.arm));
-  return { series, maxGen, base };
+  return { series, maxGen, base, reportable: records };
 }

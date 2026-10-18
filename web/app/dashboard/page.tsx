@@ -1,5 +1,5 @@
 import { ScoreChart } from "@/components/score-chart";
-import { ARMS, type GenerationRecord, SEEDS, getJSON, serviceUrl } from "@/lib/api";
+import { type GenerationRecord, getJSON, serviceUrl } from "@/lib/api";
 import { ARM_LABELS, buildSeries } from "@/lib/dashboard";
 
 export const dynamic = "force-dynamic";
@@ -7,20 +7,17 @@ export const dynamic = "force-dynamic";
 const pct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
 
 async function loadGenerations(): Promise<{ records: GenerationRecord[]; error: string | null }> {
-  const train = serviceUrl("train");
-  const calls = ARMS.flatMap((arm) =>
-    SEEDS.map((seed) => getJSON<GenerationRecord[]>(`${train}/generations?arm=${arm}&seed=${seed}`)),
-  );
-  const results = await Promise.allSettled(calls);
-  const records = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
-  const failed = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
-  return { records, error: failed && !records.length ? String(failed.reason?.message ?? failed.reason) : null };
+  try {
+    return { records: await getJSON<GenerationRecord[]>(`${serviceUrl("train")}/generations`), error: null };
+  } catch (e) {
+    return { records: [], error: (e as Error).message };
+  }
 }
 
 export default async function DashboardPage() {
   const { records, error } = await loadGenerations();
-  const { series, maxGen, base } = buildSeries(records);
-  const sorted = [...records].sort(
+  const { series, maxGen, base, reportable } = buildSeries(records);
+  const sorted = [...reportable].sort(
     (a, b) => a.arm.localeCompare(b.arm) || a.seed - b.seed || a.generation - b.generation,
   );
 
@@ -82,6 +79,7 @@ export default async function DashboardPage() {
         </section>
       )}
 
+      {!error && (
       <section className="card overflow-x-auto p-5">
         <h2 className="mb-3 font-semibold">Generations</h2>
         {sorted.length === 0 ? (
@@ -122,6 +120,7 @@ export default async function DashboardPage() {
           </table>
         )}
       </section>
+      )}
     </div>
   );
 }

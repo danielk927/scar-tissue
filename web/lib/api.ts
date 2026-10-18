@@ -104,7 +104,6 @@ export interface JudgeRunResult {
 }
 
 export const ARMS: Arm[] = ["A", "B", "C", "D", "E"];
-export const SEEDS = [0, 1, 2];
 export const FINISHED = new Set(["promoted", "rejected"]);
 
 export class ApiError extends Error {
@@ -146,22 +145,32 @@ export function postJSON<T>(url: string, body: unknown): Promise<T> {
   });
 }
 
-/** Base URLs: server components call services directly; the browser goes through the /api rewrites. */
-export function serviceUrl(service: "agent" | "train" | "env"): string {
-  if (typeof window !== "undefined") return `/api/${service}`;
+/** Service base URL, read at request time so the demo can repoint a running app (AGENT/TRAIN/ENV_SERVICE_URL). */
+export function serviceBase(service: "agent" | "train" | "env"): string {
   const env = {
-    agent: process.env.AGENT_SERVICE_URL ?? "http://localhost:8002",
-    train: process.env.TRAIN_SERVICE_URL ?? "http://localhost:8003",
-    env: process.env.ENV_SERVICE_URL ?? "http://localhost:8001",
+    agent: process.env.AGENT_SERVICE_URL || "http://localhost:8002",
+    train: process.env.TRAIN_SERVICE_URL || "http://localhost:8003",
+    env: process.env.ENV_SERVICE_URL || "http://localhost:8001",
   };
-  return env[service];
+  return env[service].replace(/\/+$/, "");
 }
 
-/** Score of the version in use after a generation: candidate if promoted, else the parent's (SPEC 9.9). */
+/** Server components call services directly; the browser goes through the /api/<service> proxy route. */
+export function serviceUrl(service: "agent" | "train" | "env"): string {
+  return typeof window !== "undefined" ? `/api/${service}` : serviceBase(service);
+}
+
+/** Score of the version in use after a generation: the candidate's if promoted, else the parent's, which stays
+ *  current after a rejected or failed generation (SPEC 9.9; same rule as experiments/scar_experiments/report.py). */
 export function currentScore(g: GenerationRecord): number | null {
   if (g.status === "promoted") return g.eval_score;
-  if (g.status === "rejected") return g.parent_eval_score;
+  if (g.status === "rejected" || g.status === "failed") return g.parent_eval_score;
   return null;
+}
+
+/** Tiny-mode and fake-trainer smoke records are never reported (train/scar_train/loop.py TINY_MARK). */
+export function isReportable(g: GenerationRecord): boolean {
+  return !g.notes.startsWith("[tiny]") && !g.notes.includes("fake trainer");
 }
 
 /** Latest finished D-s0 generation + 1, matching the agent's judge flow (SPEC 9.12 step 5). */
