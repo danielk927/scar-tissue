@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -22,6 +23,8 @@ from scar_schemas.openai_format import dumps_args, from_openai_message, load_too
 
 from . import observability as obs
 from .clients import MODEL_TIMEOUT_S, EnvClient, ToolInfraError
+
+log = logging.getLogger("scar_agent.loop")
 
 RUN_TIMEOUT_S = 180.0
 NUDGE = "Call a tool, or call submit_answer to finish."
@@ -78,6 +81,12 @@ class _Loop:
         self.output_tokens = 0
         self.call_extras: dict[str, dict] = {}
 
+    def _warn(self, what: str, e: BaseException) -> None:
+        req = self.ctx.req
+        log.warning("%s: %s", what, str(e)[:300] or repr(e), extra={
+            "run_id": self.run_id, "task_id": self.ctx.task.task_id, "arm": req.arm, "seed": req.seed,
+            "generation": req.generation, "model_version": req.model_version})
+
     async def run(self) -> None:
         ctx = self.ctx
         tools = load_tools(TOOLS_VERSION)
@@ -103,10 +112,12 @@ class _Loop:
                             self.call_extras[tc["id"]] = tc["extra_content"]
                 except (TimeoutError, openai.APIError) as e:
                     chat_span.error(repr(e))
+                    self._warn("model call failed", e)
                     self.stop_reason = "model_error"
                     break
                 except Exception as e:  # malformed response (no choices, bad role, ...)
                     chat_span.error(f"malformed model response: {e!r}")
+                    self._warn("malformed model response", e)
                     self.stop_reason = "model_error"
                     break
                 usage = getattr(resp, "usage", None)
@@ -143,6 +154,7 @@ class _Loop:
                                 name=call.name, arguments=call.arguments))
                         except ToolInfraError as e:
                             tool_span.error(str(e))
+                            self._warn(f"tool {call.name} failed", e)
                             self.stop_reason = "tool_error"
                             break
                         content = dumps_args(r.result) if r.ok else dumps_args({"error": r.error})
