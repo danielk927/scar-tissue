@@ -512,3 +512,15 @@ uv run python -m scar_train.veri smoke          # P3-05: base tool call, toy sft
 `smoke` prints the time to serving, the job's duration and cost, the attach time, both tool calls and the balance before and after; record them in section 5 and decide D-03.
 Running `smoke` again reuses the completed `D-smoke-g1` job and attachment, so it costs no new training.
 Then run the loop with `TRAINER=veri`; training defaults to 1x H100-80GB on `vast` (`VERI_TRAIN_GPU_TYPE`, `VERI_TRAIN_GPU_COUNT`, `VERI_TRAIN_PROVIDER` override it; L4-24GB on `aws` is the alternative).
+
+## P3-05 smoke test results (ran live, 2026-10-18)
+
+Run with `uv run python -m scar_train.veri smoke` against deployment `5a6d7ab804e0` (`Qwen/Qwen3-4B-Instruct-2507`, multi-adapter, 1x L4 on aws).
+- Creating the deployment took 930 s from `queued` to `serving` (about 15 minutes of provisioning); waking it from scale-to-zero costs a similar cold start.
+- The base alias `scar-base` answered a tool call (`get_accounts({})`) in 1.0 to 1.6 s.
+- A managed `sft_text` LoRA job on 3 per-turn rows (`max_steps` 2) on 1x H100 (`vast`) ran for 80 s of job time and cost $0.31; about 3.5 minutes passed from submission to running.
+- The job did not forward `lora_dropout` (it echoed `None` for a requested 0.05).
+- Saving the adapter failed on the first try: saved-model names must be 1-63 lowercase letters, digits and hyphens. The backend now maps registry versions to lowercase Veri names (`D-s0-g1` is served as `d-s0-g1`, which is the `endpoint_model_id`).
+- Attaching the saved adapter took 72 to 88 s until `active`, and the adapter answered a tool call in 1.9 s.
+- The deployment bills $1.05/hour while a replica is up.
+- D-03 is confirmed: training with managed `sft_text` per-turn rows and serving from the one multi-adapter deployment both work.

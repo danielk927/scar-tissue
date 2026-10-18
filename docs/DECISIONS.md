@@ -50,6 +50,8 @@ Append-only. One line per decision, under your person's heading (SPEC R11).
 
 ## Person 3
 
+- 2026-10-18: D-03 confirmed by the live P3-05 smoke test (train 80 s / $0.31, save, attach in 72-88 s, adapter tool call OK). Veri names are lowercase: registry version `D-s0-g1` is served as `d-s0-g1` (`endpoint_model_id`).
+- 2026-10-18: Gate retries runs that end in model_error, tool_error or timeout up to 2 more rounds before scoring them as failed (the shared L4 replica times out about 5% of turns at 16 concurrent runs). Generation 0 base score on eval_v1: 0.45.
 - 2026-10-18: D-04: base model `Qwen/Qwen3-4B-Instruct-2507` (Qwen3.5-4B cannot be trained on Veri; see docs/VERI.md section 3).
 - 2026-10-18: D-03: train with Veri managed `sft_text` (LoRA) on one prompt/completion row per assistant turn, serve base and all LoRA versions from one Veri multi-adapter deployment; SPEC 9.8 amended (pending Person 2's review of the PR); fallback is the custom script plus our own vLLM box.
 - 2026-10-18: Person 1 is also covering Person 3's work package at the user's request; scar_schemas was bootstrapped from SPEC Section 8 and merged.
