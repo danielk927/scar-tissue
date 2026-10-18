@@ -113,3 +113,48 @@ PR #2 changed step 6 of `agent/scar_agent/prompts/system_v1.md` and one assertio
 ## 9. Report back
 
 Before Person 2 wakes, push everything and append a short "Person 2 overnight status" section to the end of this file (on a `p2/` branch via PR, or tell Person 1): what is done, what failed, and what needs a human.
+
+## Person 2 overnight status (2026-10-18)
+
+Everything below is merged into `main`, apart from this note (PR). Full details are in `docs/DECISIONS.md` (Person 2), `docs/JEV.md` and `docs/DEMO.md`.
+
+**Done**
+- **1. Local stack:** Postgres 16, the full ledger (checksums identical to `docs/DATASET.md`), the seed tasks, and `base` registered. All three services run locally. **IC-1 passed: base 12/30 (40%).**
+- **2. PRs #1-3:** reviewed; nothing in Person 2's paths needed changing (mining reads `FAILURE_CAP_PER_GEN` from schemas, so 1.1.0 applies automatically).
+- **3.1 Mining re-triage:** failed runs added after a first mine are now triaged, and the cap and order are re-applied over the whole generation in one transaction. Re-mining real data cost 9 Jev calls for 9 new failures and left the 18 earlier records unchanged.
+- **3.2 Invalid tool-call JSON:** reproduced on base (HTTP 400 for the raw form, 200 for the wrapped form). Fixed in schema 1.2.0 (PR #4, merged by Person 1).
+- **3.3 Timeouts:** a timed-out model call is now retried once. Infrastructure failures went from 6/60 to 4/60; 4 of 6 retries succeeded. Numbers are in DECISIONS.
+- **3.4 Duplicate runs:** `run_batch` stays non-idempotent (a key would change the contract); this is documented in the endpoint docstrings.
+- **3.5 Nudge text:** identical to SPEC 9.2.
+- **Bug found end to end, fixed:** after any `/judge/parse`, `/agent/run_batch` could return 500. A dict row factory leaked into pooled DB connections.
+- **Bug found end to end, fixed:** `httpx2` request logs flooded stdout and Sentry Logs.
+- **4. Jev:** a real mine on base traffic gave 27 failures and 11 included, with 0 inclusion-rule violations. `jev-1.14.0` takes 70-160 ms per triage. The fixtures are real: 45 runs and 27 failure records. **The 20-row spot-check sheet is in `docs/JEV.md`.**
+- **5. Judge:** `PARSE_LM_*` on Groq works. All 32 handoff candidates parse to the correct template (Jev confidence ≥ 0.99), and an off-topic question gets a friendly `valid=false` with 3 examples. The expected answer never appears in a parse response. `/judge/run` works end to end.
+- **6. Web:**
+  - Service URLs are read per request (a proxy route replaces the build-time rewrites).
+  - The dashboard follows `report.py` and hides `[tiny]` and fake-trainer records.
+  - Pages were checked at 1280x800 and 1920x1080, including the empty, error, 404 and long-transcript states.
+  - Fixed: the repo-root `.env` never reached the web server or the browser bundle. This is why Sentry trace links and Session Replay didn't work before.
+- **7. Sentry (checked by Person 2):**
+  - Logs arrive from env, train and agent.
+  - `agent_run_failed` issues group per (template, stop reason).
+  - Traces nest the env service's spans inside the agent run.
+  - The AI Agents Overview works.
+  - Replays are now sent.
+- **8. Demo:** 10 questions confirmed failing on base through the live judge flow, plus a minute-by-minute script with fallbacks and setup steps, all in `docs/DEMO.md`.
+
+**Needs a human**
+- Person 2:
+  - Label the spot check in `docs/JEV.md` (P2-07).
+  - Read the Jev rate limits at console.typesafe.ai.
+  - Add the saved Sentry view links and screenshots (`docs/screenshots/`).
+  - Confirm a replay appears and that a judge click links to its run trace.
+- Person 1:
+  - Set `PARSE_LM_BASE_URL`, `PARSE_LM_API_KEY` and `PARSE_LM_MODEL` to the `REFLECTION_LM_*` values (Groq `openai/gpt-oss-120b`). Expect up to about 15 s per parse when Groq's free per-minute token limit is hit.
+  - Pull `main` and restart the agent and web app.
+  - Optionally drop uvicorn access logs from the env service's Sentry Logs; they are most of the volume.
+- Team: two rehearsals (`docs/DEMO.md` has the rehearsal table); keep `base` warm before judging.
+
+**What failed or is weak**
+- Turn timeouts remain at about 3-10% of runs on the shared replica. Runs that end `model_error` or `timeout` are excluded from learning by design.
+- Base is not fully deterministic at temperature 0: 2 of 16 demo candidates passed on re-run, so keep the spare question handy.
