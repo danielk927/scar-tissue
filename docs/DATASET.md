@@ -445,3 +445,36 @@ Every modification of the raw data is listed in `docs/DATASET_CHANGES.md`.
 | `vendors` | `d47f535bf823c878151f2a1e2c11dc54` |
 | `transactions` | `7c7dcfe55f41f402e283597fa58540f1` |
 | `planted_anomalies` | `b96abbd445f98ca4eed187e61f5496dc` |
+
+## Difficulty tuning (P1-07)
+
+Run on 2026-10-18 against the registered `base` model (`Qwen/Qwen3-4B-Instruct-2507` on a Veri L4 deployment), through the agent service, on train pool positions 0-199.
+The prompt was `system_v1` with step 6 reworded to describe `submit_answer` as a tool call (PR #2); with the original wording the model wrote the call as plain text and passed 0 of 30 seed tasks.
+Overall base failure: 132 of 200 (66%), inside the 40-70% target, so the parameter ranges were not changed.
+
+| template | passed / runs |
+|---|---|
+| `agg.count_by_account_period` | 2 / 15 |
+| `agg.mom_change_account` | 1 / 4 |
+| `agg.share_of_expense` | 1 / 4 |
+| `agg.top_vendor_by_spend` | 5 / 8 |
+| `agg.total_by_account_period` | 6 / 18 |
+| `agg.total_by_vendor_period` | 8 / 18 |
+| `anom.duplicate_payments` | 4 / 22 |
+| `anom.round_amounts_over` | 5 / 23 |
+| `anom.vendor_outliers` | 10 / 22 |
+| `book.accrual` | 22 / 22 |
+| `book.prepaid_amortization` | 3 / 22 |
+| `book.reclassify` | 1 / 22 |
+
+By family: aggregation 23 / 67, anomaly 19 / 67, bookkeeping 26 / 66.
+By difficulty: 1: 33 / 68, 2: 15 / 66, 3: 20 / 66.
+Stop reasons: submitted 94, model_error 52, no_submit 47, timeout 5, max_steps 2.
+The 52 `model_error` runs were the agent's 60 s per-turn timeout at 32 concurrent runs on one L4, not model failures; later runs use lower concurrency.
+
+## Train pool and eval set (P1-08)
+
+- Train pool: `POST /tasks/generate` with split train, n 2000, seed 42 (TRAIN_POOL_SEED), origin generated; 2,000 positions over all 70 train companies, 666 or 667 tasks per family, difficulty spread 222-223 per family and level.
+- `eval_v1`: split eval, n 300, seed 1234 (EVAL_SET_SEED); exactly 100 tasks per family (difficulty 34 / 33 / 33), all 30 eval companies, all eval-split.
+- `eval_v1` sha256: `59de77355e6bf9ae83fd6ac1387d8ad240c7605694f5057073eb2239cf0b2888`.
+- Generated once; never regenerated without a team decision.
