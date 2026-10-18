@@ -32,7 +32,7 @@ def setup_logging(level: int = logging.INFO) -> None:
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(level)
-    for noisy in ("httpx", "httpcore", "openai"):
+    for noisy in ("httpx", "httpcore", "httpx2", "httpcore2", "openai"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
