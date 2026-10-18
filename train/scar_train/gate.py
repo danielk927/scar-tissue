@@ -24,13 +24,14 @@ from dataclasses import dataclass
 
 import psycopg
 from scar_schemas.constants import EVAL_TEMPERATURE, REGRESSION_MIN_PASS, REGRESSION_SET_SIZE
-from scar_schemas.models import RunRequest
+from scar_schemas.models import RunBatchRequest, RunRequest
 
 from .clients import AgentClient
-from .data_builder import INFRA_STOP_REASONS, run_requests
+from .data_builder import INFRA_STOP_REASONS, MAX_CONCURRENCY, run_requests
 from .log import get_logger
 
 log = get_logger(__name__)
+INFRA_RETRY_ROUNDS = 2  # extra rounds for runs that ended in an infrastructure failure
 
 
 @dataclass(frozen=True)
@@ -169,10 +170,24 @@ def _earliest(conn: psycopg.Connection, where: str, params: tuple) -> dict[str, 
 
 
 def _score(agent: AgentClient, task_ids: list[str], stored: dict[str, bool], **request_fields) -> float:
-    """passed / len(task_ids), running each task without a stored result once."""
+    """passed / len(task_ids). Each task without a stored result runs once; a run that ends in an infrastructure
+    failure (INFRA_STOP_REASONS: the shared replica timed out or errored) is retried up to INFRA_RETRY_ROUNDS more
+    times and only then scores as not passed, so queueing on the replica does not decide a promotion. Only the first
+    round treats a fully failed batch as an outage (run_requests); a small retry round may fail entirely."""
     passed = dict(stored)
     missing = [t for t in task_ids if t not in stored]
-    if missing:
-        for run in run_requests(agent, [RunRequest(task_id=t, n=1, **request_fields) for t in missing]):
-            passed.setdefault(run.task_id, run.passed)
+    for round_ in range(1 + INFRA_RETRY_ROUNDS):
+        if not missing:
+            break
+        requests = [RunRequest(task_id=t, n=1, **request_fields) for t in missing]
+        if round_ == 0:
+            runs = run_requests(agent, requests)
+        else:
+            runs = agent.run_batch(RunBatchRequest(requests=requests, max_concurrency=MAX_CONCURRENCY))
+        missing = []
+        for run in runs:
+            if run.stop_reason in INFRA_STOP_REASONS:
+                missing.append(run.task_id)
+            else:
+                passed.setdefault(run.task_id, run.passed)
     return sum(passed.get(t, False) for t in task_ids) / len(task_ids)

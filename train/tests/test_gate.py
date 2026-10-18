@@ -170,3 +170,19 @@ def test_empty_regression_set_scores_one(conn):
     assert result == GateResult(eval_score=1.0, regression_score=1.0, promote=True)
     assert {r.purpose for r in agent.requests} == {"eval"}
     assert {r.prompt_version for r in agent.requests} == {"B-s0-g1"}
+
+
+def test_infrastructure_failures_are_retried_before_they_count(conn):
+    attempts: dict[str, int] = {}
+
+    def flaky(req, i):  # task_e1 times out once then passes; task_e2 always times out; others pass at once
+        attempts[req.task_id] = attempts.get(req.task_id, 0) + 1
+        if req.task_id == "task_e2" or (req.task_id == "task_e1" and attempts["task_e1"] == 1):
+            return {"stop_reason": "timeout", "passed": False}
+        return {"passed": True}
+
+    agent = FakeAgent(conn, flaky)
+    score = eval_score(conn, agent, **BASE, arm="D", seed=0, generation=0, eval_task_ids=EVAL_IDS[:3])
+    assert score == 2 / 3  # task_e1 passes on its retry; task_e2 counts as failed after 1 + 2 tries
+    assert attempts == {"task_e1": 2, "task_e2": 3, "task_e3": 1}
+    assert [len(b.requests) for b in agent.batches] == [3, 2, 1]
