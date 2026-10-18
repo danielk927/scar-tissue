@@ -153,7 +153,9 @@ def test_mutate_only_for_failures_without_variants(conn):
     insert_pool(conn, GEPA_TRAIN_EXTRA + GEPA_VAL_SIZE)
     env = FakeEnv(conn)
     trainset, _ = gepa_sets(conn, _req([with_variants, without]), [with_variants.failure_id, without.failure_id], env)
-    assert env.calls == [MutateRequest(failure_ids=[without.failure_id], variants_per_failure=10, seed=0)]
+    assert env.calls == [
+        MutateRequest(failure_ids=[without.failure_id], variants_per_failure=VARIANTS_PER_FAILURE, seed=0)
+    ]
     assert len(trainset) == 1 + VARIANTS_PER_FAILURE + GEPA_TRAIN_EXTRA
 
 
