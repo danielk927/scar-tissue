@@ -76,6 +76,7 @@ export interface GenerationRecord {
   eval_score: number | null;
   parent_eval_score: number | null;
   regression_score: number | null;
+  parent_regression_score?: number | null; // schemas 1.3.0; absent on older records
   notes: string;
   started_at: string;
   finished_at: string | null;

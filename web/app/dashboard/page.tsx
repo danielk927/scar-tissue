@@ -110,7 +110,12 @@ export default async function DashboardPage() {
                   <td className="pr-4">{g.examples_built}</td>
                   <td className="pr-4">{pct(g.eval_score)}</td>
                   <td className="pr-4">{pct(g.parent_eval_score)}</td>
-                  <td className="pr-4">{pct(g.regression_score)}</td>
+                  <td className="pr-4">
+                    {pct(g.regression_score)}
+                    {g.parent_regression_score != null && (
+                      <span className="text-muted"> vs {pct(g.parent_regression_score)}</span>
+                    )}
+                  </td>
                   <td className="pr-4 font-mono text-xs">
                     {g.current_model_version} / {g.current_prompt_version}
                   </td>
