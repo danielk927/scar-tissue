@@ -1,0 +1,20 @@
+# Postgres 16 for local development (SPEC 6.1, P3-02). The image's default user is a superuser, which the DDL needs
+# to create the scar_sql_tool role. Then: scripts/init_db.sh
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: scar
+      POSTGRES_PASSWORD: scar
+      POSTGRES_DB: scar
+    ports:
+      - "5432:5432"
+    volumes:
+      - scar-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scar -d scar"]
+      interval: 2s
+      retries: 30
+
+volumes:
+  scar-db:
