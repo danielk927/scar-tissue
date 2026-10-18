@@ -50,6 +50,8 @@ Append-only. One line per decision, under your person's heading (SPEC R11).
 
 ## Person 3
 
+- 2026-10-18: D-04: base model `Qwen/Qwen3-4B-Instruct-2507` (Qwen3.5-4B cannot be trained on Veri; see docs/VERI.md section 3).
+- 2026-10-18: D-03: train with Veri managed `sft_text` (LoRA) on one prompt/completion row per assistant turn, serve base and all LoRA versions from one Veri multi-adapter deployment; SPEC 9.8 amended (pending Person 2's review of the PR); fallback is the custom script plus our own vLLM box.
 - 2026-10-18: Person 1 is also covering Person 3's work package at the user's request; scar_schemas was bootstrapped from SPEC Section 8 and merged.
 - 2026-10-18: `scripts/init_db.sh` applies the DDL and then `REVOKE EXECUTE ON FUNCTION pg_catalog.set_config(...) FROM PUBLIC` (sql_query isolation; env also applies it at startup), so `ddl.sql` stays verbatim from SPEC 8.6-8.7.
 - 2026-10-18: The train service uses Fake trainer/deployer backends (the candidate is the base model) only for tests and tiny smoke runs until the Veri backend exists; fake results are never reported.
