@@ -17,6 +17,15 @@ The source of truth for the design is [`docs/SPEC.md`](docs/SPEC.md).
 5. The model is fine-tuned on Veri with its own passed attempts, and a new version is promoted only if it beats the old one on held-out companies without regressing.
 6. We compare this against prompt-only methods (failure memory and GEPA) on the same failures, the same held-out companies and several seeds.
 
+## Results
+
+![Eval success rate by generation](docs/results.png)
+
+After two generations (seed 0), the weight-update arm answers 72.7% of questions about 30 held-out companies, up from 46.3% for the frozen base (`Qwen/Qwen3-4B-Instruct-2507`).
+Failure memory (8.3%) and GEPA (43.0%) both made the agent worse after one generation and were rejected.
+The gate also rejected our first adapter (70.7%) for breaking tasks the base had solved; the second adapter beat the base on those too and was promoted.
+Every candidate and score is in [`docs/RESULTS.md`](docs/RESULTS.md).
+
 ## Repository
 
 | Path | What | Owner |
