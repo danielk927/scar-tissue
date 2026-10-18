@@ -7,6 +7,15 @@ Commit on `p2/<topic>` branches and push often, with clear messages; merge your 
 Anything that touches `schemas/` or `docs/SPEC.md` needs a PR for Person 1.
 Deadline: Devpost submission Oct 18, 12:00pm PDT; demo freeze starts around 08:00 PDT.
 
+## Freeze update (07:30 PDT): final results
+
+- **D-s0-g2 promoted: 72.7% on held-out companies vs 46.3% for the base**, regression 92.7% vs the base's 88.5% on the same set. `D-s0` now serves `D-s0-g2` (`d-s0-g2` on the deployment), so the judge's "Re-run on newest model" uses it.
+- Final table, chart and every candidate: `docs/RESULTS.md` and `docs/results.png`. The base score is now 46.3% everywhere (139/300; the earlier 0.45 counted 4 runs that kept timing out and later passed), and later lineages copy that number instead of re-measuring it.
+- C-s0-g1 (GEPA) was rejected at 43.0%; B-s0-g1 at 8.3%.
+- **Freeze: no more loop runs**, so the GPU is free for the demo. Don't call `/loop/run`.
+- Person 3's section of `docs/DEMO.md` is written: keeping the model warm, the 2:30-3:20 segment, and four held-out questions the base failed and D-s0-g2 passed, with run IDs.
+- The README and the `docs/DEVPOST.md` draft have the results filled in. Please re-check the dashboard against `docs/RESULTS.md` (the candidate scores 70.7%, 43.0% and 8.3% at generation 1, and 72.7% promoted at generation 2).
+
 ## Morning update (05:00 PDT)
 
 - Generation 1 results (held-out `eval_v1`, base 0.45): D-s0-g1 (Veri LoRA on 225 examples) scored **0.71** and improved every family (aggregation 0.29 to 0.79, anomaly 0.49 to 0.55, bookkeeping 0.61 to 0.79). B-s0-g1 (lessons in the prompt) scored 0.083: its lessons spell out `submit_answer({"number": X})` as text and the model copies that instead of calling the tool. C-s0-g1 (GEPA) is running.
