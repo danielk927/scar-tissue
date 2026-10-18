@@ -5,6 +5,7 @@ Timeouts are long: one call can run a whole batch of agent runs (SPEC 7.4: a run
 """
 
 import math
+import threading
 
 import httpx
 from pydantic import TypeAdapter
@@ -23,6 +24,10 @@ from scar_schemas.models import (
 )
 
 RUN_TIMEOUT_S = 180
+
+# One Veri replica serves every agent run. Lineages take turns on it one batch at a time: two overlapping batches
+# double its load, model calls time out, and scores measured under different loads stop being comparable.
+REPLICA_LOCK = threading.Lock()
 
 
 class DependencyError(RuntimeError):
@@ -53,9 +58,13 @@ class _Client:
 class AgentClient(_Client):
     def run_batch(self, req: RunBatchRequest) -> list[RunResult]:
         n = sum(r.n for r in req.requests)
-        body = self._call(
-            "POST", "/agent/run_batch", json=req.model_dump(mode="json"), timeout=batch_timeout(n, req.max_concurrency)
-        )
+        with REPLICA_LOCK:
+            body = self._call(
+                "POST",
+                "/agent/run_batch",
+                json=req.model_dump(mode="json"),
+                timeout=batch_timeout(n, req.max_concurrency),
+            )
         return TypeAdapter(list[RunResult]).validate_python(body)
 
     def mine(self, req: MineRequest) -> list[FailureRecord]:
@@ -66,9 +75,9 @@ class AgentClient(_Client):
 class EnvClient(_Client):
     def simulate(self, req: SimulateRequest) -> SimulateResult:
         timeout = batch_timeout(req.n_tasks, 16) + 60  # env runs the batch at concurrency 16
-        return SimulateResult.model_validate(
-            self._call("POST", "/simulate", json=req.model_dump(mode="json"), timeout=timeout)
-        )
+        with REPLICA_LOCK:
+            body = self._call("POST", "/simulate", json=req.model_dump(mode="json"), timeout=timeout)
+        return SimulateResult.model_validate(body)
 
     def mutate(self, req: MutateRequest) -> list[Task]:
         body = self._call("POST", "/mutate", json=req.model_dump(mode="json"), timeout=600)

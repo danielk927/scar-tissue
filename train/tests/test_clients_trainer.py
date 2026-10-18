@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 
 import httpx
 import pytest
@@ -30,6 +32,36 @@ def test_agent_client_posts_shared_models_and_maps_errors():
     failing = EnvClient("http://env", transport=httpx.MockTransport(lambda r: httpx.Response(503, json={})))
     with pytest.raises(DependencyError, match="HTTP 503"):
         failing.simulate(SimulateRequest(arm="D", seed=0, generation=1, model_version="base", prompt_version="v"))
+
+
+def test_agent_batches_take_turns_on_the_shared_replica():
+    in_flight, peak, guard = 0, 0, threading.Lock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal in_flight, peak
+        with guard:
+            in_flight += 1
+            peak = max(peak, in_flight)
+        time.sleep(0.05)
+        with guard:
+            in_flight -= 1
+        return httpx.Response(200, json=[]) if request.url.path == "/agent/run_batch" else httpx.Response(503)
+
+    transport = httpx.MockTransport(handler)
+    req = RunBatchRequest(requests=[RunRequest(task_id="task_1", model_version="base", purpose="eval")])
+    sim = SimulateRequest(arm="B", seed=0, generation=1, model_version="base", prompt_version="v")
+
+    def simulate():
+        with pytest.raises(DependencyError):
+            EnvClient("http://env", transport=transport).simulate(sim)
+
+    calls = [lambda: AgentClient("http://agent", transport=transport).run_batch(req)] * 2 + [simulate]
+    threads = [threading.Thread(target=call) for call in calls]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert peak == 1
 
 
 def test_fake_backends_serve_the_base_endpoint(tmp_path):
