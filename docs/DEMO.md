@@ -97,6 +97,9 @@ D-s0-g2 passed 7 of 10 and `base` 2 of 10; D-s0-g2 fixed #1, #3, #4, #7 and #8.
 For the video and the solo script, ask a **fixed** question live and open the base run next to it; ask a question that fails on both when you want to show a failure being caught.
 Run pages are at `/runs/<run_id>` on Person 1's laptop. Outcomes at temperature 0 can still vary between runs.
 
+Jev triaged the three judge failures at 09:50 PDT (`/failures/mine` for D-s0 generation 3; no GPU, no training): #6 `run_5aab649f034244098d0d14e28f55293f` is a reasoning error (95% confidence), 74% learnable, used for training (answered 16972.39, expected 16972.42); #10 is wrong final format, 65% learnable, used; #9 is wrong final format, 57% learnable, excluded as below the threshold.
+Use #6's run page to show a failure the current model still makes, with Jev's diagnosis.
+
 | # | Use | D-s0-g2 | D-s0-g2 run | base | base run |
 |---|---|---|---|---|---|
 | 1 | **fixed** | passed | `run_1be7b35b549448efac84554709030327` | failed (no answer submitted) | `run_f0c366eddbc14ad98ba942bcb84b4f26` |
