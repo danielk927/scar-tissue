@@ -186,3 +186,11 @@ def test_infrastructure_failures_are_retried_before_they_count(conn):
     assert score == 2 / 3  # task_e1 passes on its retry; task_e2 counts as failed after 1 + 2 tries
     assert attempts == {"task_e1": 2, "task_e2": 3, "task_e3": 1}
     assert [len(b.requests) for b in agent.batches] == [3, 2, 1]
+
+
+def test_reused_scores_with_only_chronic_timeouts_left_are_not_an_outage(conn):
+    eval_run(conn, "run_1", "task_e1", passed=True)
+    eval_run(conn, "run_2", "task_e2", stop_reason="timeout")  # times out every time
+    agent = FakeAgent(conn, lambda req, i: {"stop_reason": "timeout", "passed": False})
+    assert eval_score(conn, agent, **BASE, arm="B", seed=0, generation=0, eval_task_ids=EVAL_IDS[:2]) == 0.5
+    assert [len(b.requests) for b in agent.batches] == [1, 1, 1]

@@ -173,14 +173,15 @@ def _score(agent: AgentClient, task_ids: list[str], stored: dict[str, bool], **r
     """passed / len(task_ids). Each task without a stored result runs once; a run that ends in an infrastructure
     failure (INFRA_STOP_REASONS: the shared replica timed out or errored) is retried up to INFRA_RETRY_ROUNDS more
     times and only then scores as not passed, so queueing on the replica does not decide a promotion. Only the first
-    round treats a fully failed batch as an outage (run_requests); a small retry round may fail entirely."""
+    round of a fresh scoring (nothing stored) treats a fully failed batch as an outage (run_requests): when most tasks
+    are reused, the missing ones are often tasks that time out every time, and they score as not passed."""
     passed = dict(stored)
     missing = [t for t in task_ids if t not in stored]
     for round_ in range(1 + INFRA_RETRY_ROUNDS):
         if not missing:
             break
         requests = [RunRequest(task_id=t, n=1, **request_fields) for t in missing]
-        if round_ == 0:
+        if round_ == 0 and not stored:
             runs = run_requests(agent, requests)
         else:
             runs = agent.run_batch(RunBatchRequest(requests=requests, max_concurrency=MAX_CONCURRENCY))
