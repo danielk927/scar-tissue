@@ -49,3 +49,11 @@ Append-only. One line per decision, under your person's heading (SPEC R11).
 - 2026-10-18: The agent loop re-attaches provider-only tool-call fields (Gemini's `extra_content` thought signature, required on the next turn) to outgoing requests, keyed by tool-call ID within one run. Stored `RunResult.messages` never contain them, so the contract shape is unchanged; a no-op for providers without the field.
 
 ## Person 3
+
+- 2026-10-18: Person 1 is also covering Person 3's work package at the user's request; scar_schemas was bootstrapped from SPEC Section 8 and merged.
+- 2026-10-18: `scripts/init_db.sh` applies the DDL and then `REVOKE EXECUTE ON FUNCTION pg_catalog.set_config(...) FROM PUBLIC` (sql_query isolation; env also applies it at startup), so `ddl.sql` stays verbatim from SPEC 8.6-8.7.
+- 2026-10-18: The train service uses Fake trainer/deployer backends (the candidate is the base model) only for tests and tiny smoke runs until the Veri backend exists; fake results are never reported.
+- 2026-10-18: Data builder replay uses traffic runs of generations <= g (SPEC says "earlier"; strictly earlier would give generation 1 no replay), one run per task (earliest), skipping runs the lineage already trained on.
+- 2026-10-18: Data builder drops duplicates per task before applying MAX_EXAMPLES_PER_TASK; sampling and regression/eval runs that end in model_error, tool_error or timeout do not count, and an all-infrastructure-failure batch is a DependencyError.
+- 2026-10-18: `export_jsonl` keeps key order (chat templates print the `tools` JSON in stored order, which must match what the agent sends).
+- 2026-10-18: Gate: eval runs are reused across lineages per (task, model_version, prompt_version, purpose eval, temperature 0), so generation 0's base score is computed once; regression tasks come from the parent's most recent traffic generation up to the gated one; an empty regression set scores 1.0.
