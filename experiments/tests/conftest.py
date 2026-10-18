@@ -15,6 +15,8 @@ from psycopg.conninfo import make_conninfo
 
 from scar_experiments import REPO_ROOT
 
+from .factories import reset_ids
+
 load_dotenv(REPO_ROOT / ".env")
 ADMIN_URL = os.environ.get(
     "TEST_ADMIN_DATABASE_URL", os.environ.get("DATABASE_URL", "postgresql://scar:scar@localhost:5432/scar")
@@ -43,6 +45,11 @@ def db_url():
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+@pytest.fixture(autouse=True)
+def _fixed_ids():
+    reset_ids()
 
 
 @pytest.fixture(autouse=True)

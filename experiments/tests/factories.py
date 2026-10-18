@@ -1,13 +1,13 @@
 """Synthetic rows for the tables the learn-steps read, and fakes for the reflection LM and the agent and env clients.
 No test calls a real LM or service."""
 
+import itertools
 from collections.abc import Callable
 from datetime import datetime, timezone
 from decimal import Decimal
 
 import psycopg
 from psycopg.types.json import Jsonb
-from scar_schemas.ids import new_id
 from scar_schemas.models import (
     ChatMessage,
     ExpectedAnswer,
@@ -20,13 +20,28 @@ from scar_schemas.models import (
 )
 
 NOW = datetime(2026, 10, 17, 12, 0, tzinfo=timezone.utc)
+_ids = itertools.count()
+
+
+def reset_ids() -> None:
+    """Called before every test (conftest), so a test's IDs do not depend on which tests ran before it."""
+    global _ids
+    _ids = itertools.count()
+
+
+def fixed_id(prefix: str) -> str:
+    """Deterministic IDs in the `<prefix>_<32 hex>` format. Tasks share one created_at, so random IDs would make
+    every ORDER BY created_at, task_id (and so GEPA's trainset order) vary from run to run."""
+    return f"{prefix}_{next(_ids):032x}"
+
+
 SYSTEM_V1 = "You are a careful bookkeeping assistant.\n\nFinish by calling submit_answer exactly once."
 
 
 def make_task(
     *, split: str = "train", origin: str = "generated", parent_failure_id: str | None = None, prompt: str | None = None
 ) -> Task:
-    task_id = new_id("task")
+    task_id = fixed_id("task")
     return Task(
         task_id=task_id,
         company_id="company-901" if split == "train" else "company-903",
@@ -86,7 +101,7 @@ def make_run(
     passed = passed and stop_reason == "submitted"
     answer = 7500 if passed else 7600
     return RunResult(
-        run_id=new_id("run"),
+        run_id=fixed_id("run"),
         task_id=task.task_id,
         company_id=task.company_id,
         split=task.split,
@@ -164,7 +179,7 @@ def add_failure(
         ),
     )
     failure = FailureRecord(
-        failure_id=new_id("fail"),
+        failure_id=fixed_id("fail"),
         run_id=run.run_id,
         task_id=task.task_id,
         arm=arm,
