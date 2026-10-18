@@ -1,22 +1,27 @@
 """Traffic simulator (SPEC 9.5, P1-11): POST /simulate against a fake agent service."""
 
+import asyncio
 import json
 import random
+from collections import defaultdict
 from collections.abc import Callable
 from datetime import timedelta
 
 import httpx
 import pytest
 from scar_schemas.constants import TRAIN_POOL_SIZE
-from scar_schemas.models import Origin
+from scar_schemas.models import Origin, SimulateRequest
 
+from scar_env.db import Database
 from scar_env.routes.loop import get_agent_client
 from scar_env.simulate import MAX_CONCURRENCY, batch_timeout
+from scar_env.simulate import simulate as simulate_traffic
 from scar_env.store import get_task, store_task
 from scar_env.tasks import make_task
 
 from .test_mutate import NOW, insert_run, run_result
 
+INFRA = ("model_error", "tool_error", "timeout")  # SPEC 9.4's infrastructure stop reasons
 REQ = {"arm": "D", "seed": 1, "generation": 2, "model_version": "base", "prompt_version": "system_v1", "n_tasks": 20}
 RENT_Q1 = {"account_id": "company-901:acct-rent", "start_date": "2026-01-01", "end_date": "2026-03-31"}
 
@@ -63,12 +68,14 @@ def pool(conn, ledger) -> None:
 class FakeAgent:
     """Stands in for agent POST /agent/run_batch. Like the real agent, it stores one run per RunRequest in app.runs as
     it goes and returns them in request order; a task passes when its pool position is divisible by 3.
-    `fail_after = k` stores k runs and then answers 500 (a batch that died midway); `respond` replaces the handler."""
+    `fail_after = k` stores k runs and then answers 500 (a batch that died midway); `stop_reason` is every run's stop
+    reason; `respond` replaces the handler."""
 
     def __init__(self, conn):
         self.conn = conn
         self.requests: list[httpx.Request] = []
         self.fail_after: int | None = None
+        self.stop_reason = "submitted"
         self.respond: Callable[[httpx.Request], httpx.Response] | None = None
 
     def handler(self, request: httpx.Request) -> httpx.Response:
@@ -83,6 +90,7 @@ class FakeAgent:
                 get_task(self.conn, r["task_id"]),
                 **{k: r[k] for k in ("model_version", "prompt_version", "arm", "seed", "generation", "purpose")},
                 passed=passes(r["task_id"]),
+                stop_reason=self.stop_reason,
             )
             insert_run(self.conn, run)
             runs.append(run)
@@ -180,6 +188,8 @@ def raise_read_timeout(request):
         raise_read_timeout,
         lambda _: httpx.Response(500, text="Internal Server Error"),
         lambda _: httpx.Response(503, json={"error": "dependency_unavailable", "detail": "model endpoint down"}),
+        lambda _: httpx.Response(200, json=[]),  # fewer runs than requests
+        lambda _: httpx.Response(200, json=[{"run_id": "run_x"}]),  # not a RunResult
     ],
 )
 def test_an_unavailable_or_failing_agent_is_a_503(client, agent, pool, respond):
@@ -213,6 +223,37 @@ def test_a_failed_batch_resumes_with_only_the_missing_tasks(client, conn, agent,
     assert len(agent.requests) == 2
 
 
+def test_a_batch_lost_to_infrastructure_is_a_503_and_runs_again(client, conn, agent, pool):
+    agent.stop_reason = "model_error"  # e.g. the model endpoint is down; the agent still answers 200
+    resp = simulate(client)
+    assert resp.status_code == 503 and "model_error" in resp.json()["detail"]
+    agent.stop_reason = "submitted"
+    assert simulate(client).status_code == 200
+    assert agent.sent_task_ids(1) == scheduled(1, 2, 20)  # the model_error runs are not reused
+
+
+def test_a_concurrent_call_with_the_same_key_waits_and_reuses_the_runs(db_url, conn, pool, monkeypatch):
+    monkeypatch.setattr("scar_env.simulate._in_flight", defaultdict(asyncio.Lock))
+    fake = FakeAgent(conn)
+
+    async def slow_agent(request):
+        await asyncio.sleep(0.2)
+        return fake.handler(request)
+
+    async def two_calls():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(slow_agent), base_url="http://agent") as http:
+            req = SimulateRequest(**REQ)
+            return await asyncio.gather(simulate_traffic(db, http, req), simulate_traffic(db, http, req))
+
+    db = Database(db_url)
+    db.open()
+    try:
+        first, second = asyncio.run(two_calls())
+    finally:
+        db.close()
+    assert first == second and len(fake.requests) == 1
+
+
 def test_only_traffic_runs_with_the_same_key_are_reused(client, conn, agent, pool):
     expected = scheduled(1, 2, 20)
     key = {k: REQ[k] for k in ("arm", "seed", "generation", "model_version", "prompt_version")}
@@ -227,6 +268,7 @@ def test_only_traffic_runs_with_the_same_key_are_reused(client, conn, agent, poo
         run_result(task[4], **key | {"model_version": "dev"}),
         run_result(task[5], **key | {"prompt_version": "B-s1-g1"}),
         run_result(task[6], **key, purpose="eval"),
+        *(run_result(get_task(conn, t), **key, stop_reason=s) for t, s in zip(expected[7:10], INFRA, strict=True)),
     ]:
         insert_run(conn, run)
     resp = simulate(client)

@@ -6,12 +6,15 @@ import random
 import re
 import subprocess
 import sys
+import threading
 from collections import Counter
 from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+import psycopg
 import pytest
+from openai import OpenAI
 from psycopg.types.json import Jsonb
 from scar_schemas.ids import new_id
 from scar_schemas.models import FailureCause, FailureRecord, MutateRequest, Origin, RunResult, Split, Task
@@ -89,8 +92,8 @@ def insert_run(conn, run: RunResult) -> None:
     )
 
 
-def add_failure(conn, task: Task, failure_id: str | None = None) -> str:
-    """A failed traffic run on `task` and its included FailureRecord, as Person 2's miner stores them."""
+def add_failure(conn, task: Task, failure_id: str | None = None, included: bool = True) -> str:
+    """A failed traffic run on `task` and its FailureRecord, as Person 2's miner stores them."""
     run = run_result(task)
     insert_run(conn, run)
     f = FailureRecord(
@@ -106,8 +109,8 @@ def add_failure(conn, task: Task, failure_id: str | None = None) -> str:
         cause_confidence=0.9,
         cause_probabilities={"reasoning_error": 0.9, "other": 0.1},
         learnable_p=0.8,
-        included=True,
-        exclusion_reason=None,
+        included=included,
+        exclusion_reason=None if included else "over_cap",
         jev_model="jev-1.14.0",
         created_at=NOW,
     )
@@ -260,6 +263,12 @@ def test_difficulty_rises_for_the_last_thirty_percent(api, conn, world, template
     assert [t.difficulty for t in variants(api, [fid], n=n)] == expected
 
 
+def test_difficulty_stays_when_no_company_can_make_the_harder_variant(api, conn, world):
+    conn.execute("DELETE FROM ledger.transactions WHERE txn_date > '2026-02-28'")  # 59 days: too short for 93+
+    fid = add_failure(conn, original_task(conn, difficulty=2))
+    assert [t.difficulty for t in variants(api, [fid])] == [2] * 10
+
+
 DETERMINISM_SCRIPT = """
 import json, sys
 import psycopg
@@ -321,11 +330,13 @@ def test_a_paraphrase_that_keeps_every_value_replaces_the_phrasing(api, conn, wo
     fake = with_lm(api, lambda q: f"Quick question for the books: {q}")
     fid = add_failure(conn, original_task(conn))
     tasks = variants(api, [fid], n=3)
-    assert len(fake.calls) == 3
-    for t, call in zip(tasks, fake.calls, strict=True):
-        question = call["messages"][-1]["content"]
-        assert question in template_prompts(conn, t) and t.prompt == f"Quick question for the books: {question}"
+    calls = {call["messages"][-1]["content"]: call for call in fake.calls}  # LM calls run in parallel
+    assert len(fake.calls) == len(calls) == 3
+    for t in tasks:
+        question = t.prompt.removeprefix("Quick question for the books: ")
+        assert question != t.prompt and question in template_prompts(conn, t)
         assert get_task(conn, t.task_id).prompt == t.prompt
+        call = calls[question]
         assert call["model"] == "fake-model" and call["temperature"] == 0
         assert call["messages"] == [
             {"role": "system", "content": PARAPHRASE_INSTRUCTIONS},
@@ -338,8 +349,9 @@ def test_a_paraphrase_that_drops_a_value_is_rejected(api, conn, world):
     fake = with_lm(api, lambda q: re.sub(r"\d{4}-\d{2}-\d{2}", "the first day", q, count=1))
     fid = add_failure(conn, original_task(conn))
     tasks = variants(api, [fid], n=3)
-    for t, call in zip(tasks, fake.calls, strict=True):
-        assert t.prompt == call["messages"][-1]["content"] and t.prompt in template_prompts(conn, t)
+    assert sorted(t.prompt for t in tasks) == sorted(call["messages"][-1]["content"] for call in fake.calls)
+    for t in tasks:
+        assert t.prompt in template_prompts(conn, t)
 
 
 def test_a_failing_paraphrase_lm_is_a_503_and_stores_nothing(api, conn, world):
@@ -359,6 +371,13 @@ def test_paraphrasing_is_off_unless_all_three_settings_are_set(missing):
     assert paraphrase_lm(replace(get_settings(), **(full | {missing: None}))) is None
 
 
+def test_paraphrasing_uses_an_openai_client_from_the_settings():
+    full = {"paraphrase_lm_base_url": "http://lm.test/v1", "paraphrase_lm_api_key": "k", "paraphrase_lm_model": "m"}
+    lm = paraphrase_lm(replace(get_settings(), **full))  # builds the client only; nothing is sent
+    assert isinstance(lm.client, OpenAI) and lm.model == "m"
+    assert str(lm.client.base_url) == "http://lm.test/v1/" and lm.client.api_key == "k"
+
+
 # ---------- request handling and guards ----------
 
 
@@ -368,6 +387,22 @@ def test_mutate_is_idempotent_per_failure(api, conn, world):
     again = post(api, [fid], n=4, seed=9)  # a retry, or learn-step C asking again with other arguments
     assert again.status_code == 200 and again.json() == first
     assert variant_count(conn) == 10
+
+
+def test_a_concurrent_call_waits_and_returns_the_same_variants(db_url, conn, world):
+    fid = add_failure(conn, original_task(conn))
+    req = MutateRequest(failure_ids=[fid], variants_per_failure=3, seed=0)
+    with psycopg.connect(db_url) as first, psycopg.connect(db_url) as second:
+        made = mutate(first, req)  # not committed yet
+        result = {}
+        retry = threading.Thread(target=lambda: result.update(tasks=mutate(second, req)))
+        retry.start()
+        retry.join(timeout=1)
+        assert retry.is_alive()  # waiting on the first call's lock
+        first.commit()
+        retry.join(timeout=10)
+        assert [t.task_id for t in result["tasks"]] == [t.task_id for t in made]
+    assert variant_count(conn) == 3
 
 
 def test_variants_are_flattened_in_request_order(api, conn, world):
@@ -391,6 +426,13 @@ def test_a_failure_on_an_eval_task_is_refused(api, conn, world):
     resp = post(api, [fid])
     assert resp.status_code == 409 and resp.json()["error"] == "eval_failure"
     assert variant_count(conn) == 0
+
+
+def test_an_excluded_failure_is_refused(api, conn, world):
+    fid = add_failure(conn, original_task(conn), included=False)
+    resp = post(api, [fid])
+    assert resp.status_code == 409 and resp.json()["error"] == "failure_not_included"
+    assert "over_cap" in resp.json()["detail"] and variant_count(conn) == 0
 
 
 def test_variants_per_failure_must_be_positive(api, conn, world):
