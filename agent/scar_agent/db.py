@@ -157,12 +157,12 @@ class Store:
 
     async def get_company_catalog(self, company_id: str) -> dict:
         """Accounts and vendors of one company, for the judge parse LM (SPEC 9.12 step 3)."""
-        async with self.pool.connection() as conn:
-            conn.row_factory = dict_row
-            accounts = await (await conn.execute(
+        # dict rows on the cursor only: setting conn.row_factory would leak into the pooled connection's next user
+        async with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            accounts = await (await cur.execute(
                 """SELECT account_id, name, account_type FROM ledger.accounts
                    WHERE company_id = %s ORDER BY account_id""", (company_id,))).fetchall()
-            vendors = await (await conn.execute(
+            vendors = await (await cur.execute(
                 "SELECT vendor_id, name FROM ledger.vendors WHERE company_id = %s ORDER BY vendor_id",
                 (company_id,))).fetchall()
         return {"accounts": accounts, "vendors": vendors}

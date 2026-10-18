@@ -88,3 +88,12 @@ async def test_failures_and_mining(db):
     dup = to_record(make_run("run_1"), Triage("other", 0.5, {}, 0.1, "j"), REQ)
     with pytest.raises(psycopg.errors.UniqueViolation):  # run_id is UNIQUE in app.failures; whole batch rolls back
         await db.insert_failures([dup])
+
+
+async def test_catalog_does_not_change_pooled_connection_rows(db):
+    # regression: get_company_catalog set conn.row_factory = dict_row on a pooled connection, so the next query on
+    # that connection got dict rows and get_company_name raised KeyError: 0 (found in an end-to-end run)
+    for _ in range(6):  # more calls than the pool has connections
+        await db.get_company_catalog("company-004")
+    for _ in range(6):
+        assert await db.get_company_name("company-004") == "Stitchform Apparel Co"
