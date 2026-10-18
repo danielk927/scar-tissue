@@ -14,6 +14,39 @@ Spec: SPEC 14 (about 4 minutes). Deadline: Devpost 12:00 PDT Oct 18; demo freeze
 5. **Browser tabs, in this order:** `/dashboard`, `/ask`, the Sentry issues view, the Sentry AI Agents Overview, one prepared trace (links below).
 6. Confirm `GET :8003/models/current?arm=D&seed=0` returns the newest promoted D-s0 model. The judge's runs use it.
 
+## Solo script (one presenter, about 4 minutes)
+
+Use this when one person presents; the three-person script below has the same beats.
+Tabs, in order: `/dashboard`, `/ask`, the mined failure `/runs/run_0faba9d7e7704101a0f6e6593a6ba91c`, the Sentry issues view, the Sentry AI Agents Overview, the D-s0-g2 Veri job (https://veri.studio/training?job=d1a57653ef1b).
+
+| Time | Screen | Say |
+|---|---|---|
+| 0:00-0:20 | `/dashboard`, chart | "Most self-improving agents only rewrite their prompts. Ours turns every failure Sentry catches into training data, retrains the model on Veri, and only ships it if it gets better on companies it has never seen." |
+| 0:20-0:50 | `/dashboard`, per-arm table | "This is a 4-billion-parameter Qwen model doing bookkeeping on the QuickBooks dataset. On 30 companies it never trained on, the base model answers 46.3%. After two rounds of retraining on its own failures, 72.7%. On the same failures, lessons in the prompt dropped it to 8.3%, and GEPA to 43%." |
+| 0:50-1:10 | `/dashboard`, generations table, D-s0-g1 row | "The referee is strict. Our first adapter scored 70.7%, but it broke tasks the base already solved: 86.7% against the base's 93.3% on the same tasks. It didn't ship. The second one also beat the base there, and shipped." |
+| 1:10-2:10 | `/ask` | Hand over the laptop, or type a question from "Prepared questions, re-run on D-s0-g2" below. Click **Ask** and read the interpretation: "Jev picks the question type, a parse model fills in the real account and dates, and code computes the expected answer from the ledger. No LLM grades it." Click **Yes, run it**. While it runs (10 to 60 s), open the Sentry AI Agents Overview: "every run is traced." Back on `/ask`, read the result card and the verifier line. |
+| 2:10-2:40 | `/runs/run_0faba9d7e7704101a0f6e6593a6ba91c`, then Sentry issues | "When a run fails, Sentry keeps the trace and groups the failure. Jev triages it: this one gave up without answering, and Jev rates it 93% learnable, so it became training data." |
+| 2:40-3:20 | Veri job page | "That one failure became five new practice questions from the same template at other companies, with answers computed by SQL. The model practiced on them, we kept only its passing attempts, and Veri fine-tuned a LoRA adapter on them: 405 examples across two generations, served from one multi-adapter deployment." |
+| 3:20-4:00 | `/dashboard` | "Weight updates beat prompt-only methods on the same failures, and the gate refused a model that only looked better. Sentry gives us the traces, failure issues and replays; Veri runs every training job and serves every version; the QuickBooks dataset and Jev give us the ledger and the triage." |
+
+If the live question takes over 2 minutes, keep talking over the Sentry tabs, then open a prepared run.
+
+## Demo video (2:30, recorded)
+
+Record with QuickTime (File → New Screen Recording) at 1920x1080 with the browser full screen, then upload to YouTube as unlisted.
+Use prepared runs instead of waiting on a live one.
+Wake the model first (Setup, step 1).
+
+| # | Time | Shot | Narration |
+|---|---|---|---|
+| 1 | 0:00-0:15 | `/dashboard` chart | The hook from the solo script, 0:00-0:20. |
+| 2 | 0:15-0:40 | `/dashboard` per-arm table, then the generations table | 46.3% to 72.7% on held-out companies; lessons-in-prompt 8.3%, GEPA 43%; D-s0-g1 rejected at 70.7% for breaking solved tasks. |
+| 3 | 0:40-1:15 | `/ask`: a question from the "fixed" rows below, **Ask**, the interpretation, **Yes, run it**, the result card | "A judge asks a question about one company's books. The model that failed this last night now gets it right." |
+| 4 | 1:15-1:35 | The base model's run of the same question (`/runs/<base run>` from the table below) | "Here is the base model on the same question: it never submitted an answer." |
+| 5 | 1:35-1:55 | `/runs/run_0faba9d7e7704101a0f6e6593a6ba91c`, then the Sentry trace and issues | Failures are traced in Sentry and triaged by Jev into training data. |
+| 6 | 1:55-2:15 | The Veri job page | Five variants per failure, passing attempts only, one Veri LoRA job per generation. |
+| 7 | 2:15-2:30 | `/dashboard` chart | The close from the solo script, shortened. |
+
 ## Script (SPEC 14; Person 2 drives 1:00–2:30)
 
 | Time | Who | Clicks and words |
