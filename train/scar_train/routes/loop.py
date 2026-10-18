@@ -64,6 +64,7 @@ LoopContextDep = Annotated[loop.LoopContext, Depends(get_loop_context)]
 
 @router.post("/loop/run")
 def run_loop(req: LoopRunRequest, db: DbDep, ctx: LoopContextDep) -> dict:
+    loop.check_backend(ctx, req.arm, req.tiny)
     lin = registry.lineage(req.arm, req.seed)
     with _lock:
         if lin in _busy:

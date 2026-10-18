@@ -112,7 +112,8 @@ Numbers and every candidate are in `docs/RESULTS.md`.
 
 The deployment parks after 15 idle minutes and takes about 15 minutes to wake, and every adapter parks with it.
 Run `cd train && uv run python -m scar_train.veri wake` 30 minutes before judging, then ask one question on `/ask` so both the base and `d-s0-g2` have answered once.
-Between judges, one question every 10 minutes keeps it up.
+During the judging window, keep it up from a second terminal: `cd train && uv run python -m scar_train.keep_warm --minutes 120`.
+It follows the current D-s0 model and sends one tool-call check every two minutes; stop it with Ctrl-C after judging so the deployment can park.
 It bills $1.05 per hour while awake; the Veri balance was $10.17 at the freeze.
 
 ### What to show in 2:30-3:20
@@ -138,3 +139,4 @@ A full generation took 1.5 to 2.5 hours on one replica, so none runs during judg
 Measured on D-s0-g2: traffic 11 min, mining and variants under 1 min, sampling the variants 32 min, Veri training 45 min (A100; D-s0-g1 took about 18 min on an H100), attaching the adapter 1 to 15 min, gate 29 min.
 A tiny generation on its own lineage (`SEED=9 scripts/smoke_ic2.sh`, with `TRAINER=veri`) runs every step on a few tasks, but it still waits for a Veri training slot (3 to 4 minutes queued in the P3-05 smoke) and it shares the replica with the judge's runs.
 If a judge asks for a live cycle, show the D-s0-g2 records and Veri job instead.
+After judging, `cd train && uv run python -m scar_train.campaign --demo --plan-only` shows the next generation (D-s0-g3) and `--demo --max-hours 2` runs it.
