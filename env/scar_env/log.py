@@ -28,9 +28,8 @@ class JsonFormatter(logging.Formatter):
 def setup_logging() -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
-    root = logging.getLogger()
-    root.handlers[:] = [handler]
-    root.setLevel(logging.INFO)
+    # force=True because uvicorn may have configured logging already (docs/SENTRY.md section 6)
+    logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
 
 
 def get_logger(name: str) -> logging.Logger:
