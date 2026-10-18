@@ -9,7 +9,9 @@ import type { NextConfig } from "next";
 // runtime, where service URLs are read per request by app/api/[service]/[...path]/route.ts.
 loadEnvConfig(path.resolve(process.cwd(), ".."), process.env.NODE_ENV !== "production", console, true);
 
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  devIndicators: false, // no "N" badge on the projector during the demo
+};
 
 export default withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG,

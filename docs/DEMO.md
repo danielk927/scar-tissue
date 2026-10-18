@@ -60,8 +60,8 @@ Spare: #13 from the handoff list (Courtyard Commons Apartments Construction, Tax
 
 Org: https://ucla-s1.sentry.io
 
-- Issues, grouped `agent_run_failed`: _(saved view link: Person 2)_
-- AI Agents Overview dashboard: _(link: Person 2)_
+- Issues, grouped `agent_run_failed`: https://ucla-s1.sentry.io/issues/?groupStatsPeriod=auto&query=agent_run_failed&referrer=issue-list&sort=recommended&statsPeriod=14d
+- AI Agents Overview dashboard: https://ucla-s1.sentry.io/dashboard/10476398/
 - One failed traffic trace: https://ucla-s1.sentry.io/explore/traces/trace/5ce7b14a306d42cf929a9ce946b3d9fc/ (no_submit; agent and env spans in one trace)
 
 Person 2 checked these on 2026-10-18:
@@ -70,7 +70,7 @@ Person 2 checked these on 2026-10-18:
 - Traces show agent and env spans in one trace.
 - The AI Agents Overview dashboard shows runs, tokens and tool calls.
 
-Session Replay: the browser has sent replays since the web app's `.env` fix (2026-10-18). Confirm that one appears.
+Session Replay: confirmed 2026-10-18; Person 2's judge session (Windows, Chrome) appears in Session Replay.
 
 Two notes for the services:
 - The agent no longer sends its outgoing HTTP request logs (fixed 2026-10-18).
@@ -78,12 +78,18 @@ Two notes for the services:
 
 ## Screenshots (SPEC 17)
 
-In `docs/screenshots/` (Person 2 to add):
+In `docs/screenshots/`:
 
-- `sentry-issues.png`: `agent_run_failed` issues grouped by failure mode
-- `sentry-trace.png`: one agent trace (waterfall or Agent Activity)
-- `sentry-replay.png`: one session replay of the judge UI
-- `sentry-agents.png` (optional): the AI Agents Overview
+| File | Shows | Status |
+|---|---|---|
+| `sentry-issues.png` | `agent_run_failed` issues, one per (template, stop reason) | saved |
+| `sentry-replays.png` | Session Replay list with Person 2's live judge session | saved (a list, not the player) |
+| `app-judge-result.png` | `/ask`: a judge question on Ashgrove Family Law, answered 57000 against an expected 56999.95, marked Failed | saved |
+| `app-run-viewer.png` | `/runs/<id>`: outcome, verifier detail, Sentry trace link, Re-run button, transcript | saved |
+| `sentry-trace.png` | one agent trace waterfall (agent and env spans in one trace) | **to add** |
+| `sentry-agent-activity.png` | the same trace's Agent Activity tab | **to add** |
+| `sentry-agents.png` | AI Agents Overview dashboard | **to add** |
+| `sentry-replay.png` | the replay player paused on the `/ask` result card | **to add** |
 
 ## Rehearsals
 
