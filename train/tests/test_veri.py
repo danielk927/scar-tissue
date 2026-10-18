@@ -415,6 +415,25 @@ def test_trainer_raises_when_the_job_fails(tmp_path):
     assert not any(n.startswith("models.") for n in fake.names())
 
 
+def test_trainer_moves_to_the_next_placement_when_veri_has_no_capacity(tmp_path, caplog):
+    no_capacity = {"code": "CAPACITY_UNAVAILABLE", "message": "No H100-80GB capacity available right now"}
+    fallbacks = (("H100-80GB", 1, "digitalocean"), ("A100-80GB", 1, "vast"))
+    fake = FakeVeri(job_statuses=("failed", "running", "completed"), job_error=no_capacity)
+    with caplog.at_level(logging.WARNING, logger="scar_train.veri"):
+        adapter = train(make_trainer(fake, fallback_placements=fallbacks), tmp_path)
+    assert adapter == TrainedAdapter(adapter_uri="mdl_1", training_job_id="job_1")
+    created = [kw for n, _, kw in fake.calls if n == "training_jobs.create"]
+    placed = [(kw["gpu_type"], kw["gpu_count"], kw["provider"]) for kw in created]
+    assert placed == [("H100-80GB", 1, "vast"), ("H100-80GB", 1, "digitalocean")]
+    assert "no capacity for H100-80GB x1 on vast; retrying on H100-80GB x1 on digitalocean" in caplog.text
+    assert fake.names().count("datasets.create") == 1  # the second job reuses the uploaded stream
+
+    fake = FakeVeri(job_statuses=("failed",), job_error=no_capacity)
+    with pytest.raises(veri.VeriBackendError, match="CAPACITY_UNAVAILABLE"):
+        train(make_trainer(fake, fallback_placements=fallbacks), tmp_path)
+    assert fake.names().count("training_jobs.create") == 3
+
+
 def test_trainer_cancels_a_timed_out_job_but_keeps_an_interrupted_one(tmp_path, caplog):
     fake = FakeVeri(job_statuses=("running",))
     with pytest.raises(veri.VeriTimeout):

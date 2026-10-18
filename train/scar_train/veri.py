@@ -26,6 +26,7 @@ Environment (repo-root .env):
     VERI_TRAIN_GPU_TYPE                training GPU, default H100-80GB (fastest and cheapest per job, docs/VERI.md 5)
     VERI_TRAIN_GPU_COUNT               default 1
     VERI_TRAIN_PROVIDER                default vast; the alternative is VERI_TRAIN_GPU_TYPE=L4-24GB with provider aws
+                                       (a job that fails with CAPACITY_UNAVAILABLE moves to FALLBACK_TRAIN_PLACEMENTS)
     VERI_SCALE_TO_ZERO_WINDOW_SECONDS  create-base only: idle seconds before the deployment parks (default 900, min 300)
     MODEL_API_KEY                      key sent to the deployment by the agent and by smoke's tool calls; the value of
                                        VERI_API_KEY works, a model access key bound to the deployment is narrower
@@ -50,10 +51,10 @@ import re
 import sys
 import tempfile
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +86,8 @@ DEFAULT_HYPERPARAMETERS: dict[str, Any] = {
 }
 DEFAULT_TRAIN_GPU_TYPE = "H100-80GB"
 DEFAULT_TRAIN_PROVIDER = "vast"
+# Tried in order when Veri has no capacity for the configured placement: the same GPU elsewhere, then the next one.
+FALLBACK_TRAIN_PLACEMENTS = (("H100-80GB", 1, "digitalocean"), ("A100-80GB", 1, "vast"))
 
 # The deployment create-base makes: 1x L4 on aws, multi-adapter, tool calls parsed by vLLM's hermes parser.
 SERVE_GPU = {"gpu_type": "L4-24GB", "gpu_count": 1}
@@ -129,6 +132,10 @@ def veri_name(name: str) -> str:
 
 class VeriBackendError(RuntimeError):
     """A Veri call failed, a job or attachment ended badly, or the backend is misconfigured."""
+
+
+class VeriCapacityError(VeriBackendError):
+    """A training job failed because Veri had no GPU capacity for its placement."""
 
 
 class VeriTimeout(VeriBackendError):
@@ -311,6 +318,7 @@ class VeriTrainer:
         gpu_count: int,
         provider: str | None,
         hyperparameters: dict[str, Any],
+        fallback_placements: Sequence[tuple[str, int, str | None]] = (),
         tokenizer_loader: Callable[[str], Any] = load_tokenizer,
         poll_s: float = TRAIN_POLL_S,
         timeout_s: float = TRAIN_TIMEOUT_S,
@@ -322,6 +330,7 @@ class VeriTrainer:
         self.gpu_count = gpu_count
         self.provider = provider
         self.hyperparameters = dict(hyperparameters)
+        self.fallback_placements = tuple(fallback_placements)
         self.tokenizer_loader = tokenizer_loader
         self.poll_s = poll_s
         self.timeout_s = timeout_s
@@ -332,12 +341,23 @@ class VeriTrainer:
         self, *, version: str, dataset_path: Path, n_examples: int, base_model_hf_id: str, seed: int
     ) -> TrainedAdapter:
         """Idempotent per version (the loop re-runs an interrupted training step): a job whose output_name is version
-        is reused if it completed or is still in flight; a new job starts only if there is none or all failed."""
+        is reused if it completed or is still in flight; a new job starts only if there is none or all failed.
+        A job that fails for lack of capacity is resubmitted on the next of fallback_placements."""
         ctx = {"model_version": version}
+        submit = partial(self._submit, version, dataset_path, n_examples, base_model_hf_id, seed, ctx=ctx)
+        placements = [(self.gpu_type, self.gpu_count, self.provider), *self.fallback_placements]
         job = self._existing_job(version, base_model_hf_id)
         if job is None:
-            job = self._submit(version, dataset_path, n_examples, base_model_hf_id, seed, ctx)
-        job = self._wait_job(job.id, ctx)
+            job = submit(placements[0])
+        for current, nxt in zip(placements, [*placements[1:], None], strict=True):
+            try:
+                job = self._wait_job(job.id, ctx)
+                break
+            except VeriCapacityError:
+                if nxt is None:
+                    raise
+                log.warning("veri: no capacity for %s x%d on %s; retrying on %s x%d on %s", *current, *nxt, extra=ctx)
+                job = submit(nxt)
         log.info(
             "veri: training job %s completed: duration_seconds=%s cost_usd=%s gpu=%s provider=%s",
             job.id,
@@ -352,9 +372,18 @@ class VeriTrainer:
         return TrainedAdapter(adapter_uri=model.id, training_job_id=job.id)
 
     def _submit(
-        self, version: str, dataset_path: Path, n_examples: int, base_model_hf_id: str, seed: int, ctx: dict
+        self,
+        version: str,
+        dataset_path: Path,
+        n_examples: int,
+        base_model_hf_id: str,
+        seed: int,
+        placement: tuple[str, int, str | None],
+        *,
+        ctx: dict,
     ) -> Any:
-        """Convert and upload the dataset, then create the sft_text job."""
+        """Convert and upload the dataset (the upload resumes an existing stream), then create the sft_text job."""
+        gpu_type, gpu_count, provider = placement
         rows_path = dataset_path.with_name(f"{dataset_path.stem}.veri.jsonl")
         max_len = self.hyperparameters["max_seq_length"]
         stats = convert_dataset(
@@ -381,17 +410,17 @@ class VeriTrainer:
                 dataset_id=ds.id,
                 output_name=version,
                 method="sft_text",
-                gpu_type=self.gpu_type,
-                gpu_count=self.gpu_count,
-                provider=self.provider,
+                gpu_type=gpu_type,
+                gpu_count=gpu_count,
+                provider=provider,
                 hyperparameters=self.hyperparameters,
             )
         log.info(
             "veri: training job %s submitted (%s x%d on %s) %s",
             job.id,
-            self.gpu_type,
-            self.gpu_count,
-            self.provider or "default provider",
+            gpu_type,
+            gpu_count,
+            provider or "default provider",
             job.dashboard_url or "",
             extra=ctx,
         )
@@ -444,7 +473,8 @@ class VeriTrainer:
                 return job
             if job.status in ("failed", "cancelled"):
                 err = job.error or {}
-                raise VeriBackendError(f"training job {job_id} {job.status}: {err.get('code')}: {err.get('message')}")
+                error = VeriCapacityError if err.get("code") == "CAPACITY_UNAVAILABLE" else VeriBackendError
+                raise error(f"training job {job_id} {job.status}: {err.get('code')}: {err.get('message')}")
             return None
 
         try:
@@ -623,6 +653,7 @@ def make_backends(settings: Settings) -> tuple[VeriTrainer, VeriDeployer]:
         gpu_count=int(os.environ.get("VERI_TRAIN_GPU_COUNT") or 1),
         provider=os.environ.get("VERI_TRAIN_PROVIDER") or DEFAULT_TRAIN_PROVIDER,
         hyperparameters=DEFAULT_HYPERPARAMETERS,
+        fallback_placements=FALLBACK_TRAIN_PLACEMENTS,
     )
     deployer = VeriDeployer(client, deployment_id=deployment_id, base_url=endpoint_base_url(client, deployment_id))
     return trainer, deployer
