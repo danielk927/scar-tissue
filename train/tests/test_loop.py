@@ -279,8 +279,12 @@ def test_generation_zero_is_the_base_eval_once_per_lineage(conn, ctx, f, base):
         "system_v1",
     )
     assert run(conn, ctx, "A", 0) == rec and f.calls == G0_CALLS  # finished: nothing runs again
+    f.base_score, f.calls[:] = 0.5, []  # the stored base runs changed since (a retried timeout passed)
     run(conn, ctx, "D", 1)
     assert [g.generation_id for g in registry.list_generations(conn)] == ["A-s0-g0", "D-s0-g0", "D-s0-g1"]
+    assert "eval_score" not in f.calls  # generation 0 is measured once and shared by every lineage
+    d0, d1 = registry.get_generation(conn, "D-s0-g0"), registry.get_generation(conn, "D-s0-g1")
+    assert (d0.eval_score, d1.parent_eval_score) == (0.4, 0.4)
 
 
 def test_a_generation_without_included_failures_is_rejected(conn, ctx, f, base):

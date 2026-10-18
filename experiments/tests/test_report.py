@@ -112,6 +112,16 @@ def test_report_output_is_byte_identical_across_runs(conn, db_url, tmp_path):
     assert "| Arm | Generation | Mean | Min | Max | n |" in text
     assert "| D - Weight updates (ours) | 2 | 52.5% | 50.0% | 55.0% | 2 |" in text
     assert "| A - Frozen base | 2 | 40.0% | 40.0% | 40.0% | 1 |" in text
+    # every gated candidate, rejected ones included, in generation order; the unfinished D-s2-g1 is not one
+    rows = [line for line in text.splitlines() if line.startswith("| 1 |") or line.startswith("| 2 |")]
+    assert rows == [
+        "| 1 | B-s0 (Failure memory) | 38.0% | 40.0% | - | - | rejected |",
+        "| 1 | C-s0 (GEPA) | 42.0% | 40.0% | - | - | promoted |",
+        "| 1 | D-s0 (Weight updates (ours)) | 50.0% | 40.0% | - | - | promoted |",
+        "| 1 | D-s1 (Weight updates (ours)) | 35.0% | 40.0% | - | - | rejected |",
+        "| 2 | D-s0 (Weight updates (ours)) | 45.0% | 50.0% | - | - | rejected |",
+        "| 2 | D-s1 (Weight updates (ours)) | 55.0% | 40.0% | - | - | promoted |",
+    ]
     assert text.endswith("Generation records left out (still in progress, or without the score they need): 1.\n")
 
 

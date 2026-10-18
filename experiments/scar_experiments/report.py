@@ -4,8 +4,9 @@ Run: uv run python -m scar_experiments.report [--database-url URL] [--out docs/R
 
 The score of an arm at generation g is the eval score of the model and prompt that are current after g: a promoted
 candidate's eval_score; after a rejected or failed generation the parent stays current, so its parent_eval_score.
-Generation 0 is the shared base score, and arm A (frozen base) is generation 0 repeated. Re-running on the same data
-writes byte-identical files.
+Generation 0 is the shared base score, and arm A (frozen base) is generation 0 repeated. A second table and the chart's
+hollow markers show every candidate the gate scored, including rejected ones. Re-running on the same data writes
+byte-identical files.
 """
 
 import argparse
@@ -87,11 +88,21 @@ def summarize(records: list[GenerationRecord]) -> tuple[list[Cell], int]:
     return cells, left_out
 
 
-def _pct(x: float) -> str:
-    return f"{100 * x:.1f}%"
+def gated(records: list[GenerationRecord]) -> list[GenerationRecord]:
+    """Every candidate the gate decided on (generation >= 1, promoted or rejected), by generation, arm and seed."""
+    done = [
+        r
+        for r in records
+        if r.generation >= 1 and r.status in (GenStatus.promoted, GenStatus.rejected) and r.eval_score is not None
+    ]
+    return sorted(done, key=lambda r: (r.generation, r.arm, r.seed))
 
 
-def render_markdown(cells: list[Cell], left_out: int, png_link: str) -> str:
+def _pct(x: float | None) -> str:
+    return "-" if x is None else f"{100 * x:.1f}%"
+
+
+def render_markdown(cells: list[Cell], left_out: int, png_link: str, candidates: list[GenerationRecord]) -> str:
     lines = [
         "# Results",
         "",
@@ -112,6 +123,21 @@ def render_markdown(cells: list[Cell], left_out: int, png_link: str) -> str:
     for c in cells:
         stats = " | ".join(_pct(x) for x in (c.mean, c.min, c.max))
         lines.append(f"| {c.arm} - {ARM_NAMES[c.arm]} | {c.generation} | {stats} | {c.n} |")
+    lines += [
+        "",
+        "## Every candidate the gate scored",
+        "",
+        "Promotion needs a higher eval score than the parent and a regression score no more than"
+        " `REGRESSION_TOLERANCE` below the parent's re-run on the same regression set (SPEC 9.9).",
+        "",
+        "| Generation | Lineage | Eval | Parent eval | Regression | Parent regression | Decision |",
+        "|---:|---|---:|---:|---:|---:|---|",
+    ]
+    for r in candidates:
+        scores = " | ".join(
+            _pct(x) for x in (r.eval_score, r.parent_eval_score, r.regression_score, r.parent_regression_score)
+        )
+        lines.append(f"| {r.generation} | {r.arm}-s{r.seed} ({ARM_NAMES[r.arm]}) | {scores} | {r.status.value} |")
     if left_out:
         lines += ["", f"Generation records left out (still in progress, or without the score they need): {left_out}."]
     return "\n".join(lines) + "\n"
@@ -126,12 +152,15 @@ def _end_label_positions(ends: list[float], gap: float, top: float) -> list[floa
     return [y - shift for y in placed]
 
 
-def write_chart(cells: list[Cell], path: Path) -> None:
-    """Line of the mean per arm with a min-max band. A legend names every arm; arms that reach the last generation
-    also get a direct end label on a leader line, spread apart where labels would collide."""
+def write_chart(cells: list[Cell], path: Path, candidates: list[GenerationRecord]) -> None:
+    """Line of the mean per arm with a min-max band, and a hollow marker in the arm's color for each rejected
+    candidate. A legend names every arm; arms that reach the last generation also get a direct end label on a leader
+    line, spread apart where labels would collide."""
     arms = sorted({c.arm for c in cells})
     last = max(c.generation for c in cells)
-    lo, hi = 100 * min(c.min for c in cells), 100 * max(c.max for c in cells)
+    rejected = [r for r in candidates if r.status == GenStatus.rejected]
+    scores = [c.min for c in cells] + [c.max for c in cells] + [r.eval_score for r in rejected]
+    lo, hi = 100 * min(scores), 100 * max(scores)
     pad = max(2.0, 0.15 * (hi - lo))
     ymin, ymax = max(0.0, lo - pad), min(100.0, hi + pad)
 
@@ -168,6 +197,20 @@ def write_chart(cells: list[Cell], path: Path) -> None:
             keys.append(Line2D([], [], color=color, linewidth=2.5, solid_capstyle="round"))
             if gens[-1] == last:
                 ends.append((100 * arm_cells[-1].mean, arm))
+            arm_rejected = [r for r in rejected if r.arm == arm]
+            ax.scatter(
+                [r.generation for r in arm_rejected],
+                [100 * r.eval_score for r in arm_rejected],
+                s=36,
+                facecolors=SURFACE,
+                edgecolors=color,
+                linewidths=1.5,
+                zorder=4,
+            )
+        if rejected:
+            keys.append(
+                Line2D([], [], linestyle="", marker="o", markersize=6, markerfacecolor=SURFACE, markeredgecolor=MUTED)
+            )
 
         ends.sort()
         heights = _end_label_positions([y for y, _ in ends], gap=0.06 * (ymax - ymin), top=ymax)
@@ -202,20 +245,20 @@ def write_chart(cells: list[Cell], path: Path) -> None:
         fig.text(
             0.08,
             0.875,
-            "Held-out companies (eval_v1). Line: mean over seeds; band: min to max.",
+            "Held-out companies (eval_v1). Line: version in use, mean over seeds; band: min to max.",
             color=INK_2,
             fontsize=9,
         )
         fig.legend(
             keys,
-            [f"{arm} - {ARM_NAMES[arm]}" for arm in arms],
+            [f"{arm} - {ARM_NAMES[arm]}" for arm in arms] + (["Rejected candidate"] if rejected else []),
             loc="upper left",
             bbox_to_anchor=(0.072, 0.85),
-            ncol=len(arms),
+            ncol=len(keys),
             frameon=False,
             fontsize=8.5,
             handlelength=1.2,
-            columnspacing=1.6,
+            columnspacing=1.2,
             labelcolor=INK_2,
         )
         fig.savefig(path, format="png", facecolor=SURFACE, metadata={"Software": None})
@@ -237,11 +280,12 @@ def main(argv: list[str] | None = None) -> None:
         cells, left_out = summarize(records)
     except ValueError as e:
         raise SystemExit(f"error: {e}") from e
+    candidates = gated(records)
     for path in (args.out, args.png):
         path.parent.mkdir(parents=True, exist_ok=True)
     png_link = Path(os.path.relpath(args.png.resolve(), args.out.resolve().parent)).as_posix()
-    args.out.write_text(render_markdown(cells, left_out, png_link))
-    write_chart(cells, args.png)
+    args.out.write_text(render_markdown(cells, left_out, png_link, candidates))
+    write_chart(cells, args.png, candidates)
     print(f"wrote {args.out} and {args.png}")
 
 

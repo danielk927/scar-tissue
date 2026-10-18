@@ -63,8 +63,7 @@ from .trainer import Deployer, FakeDeployer, FakeTrainer, TrainedAdapter, Traine
 log = get_logger(__name__)
 
 TINY_MARK = "[tiny]"
-# One base eval at a time in this process, so lineages starting together reuse each other's stored eval runs and
-# share one generation-0 score (SPEC 9.9).
+# One base eval at a time in this process, so lineages starting together share one generation-0 score (SPEC 9.9).
 _BASE_EVAL_LOCK = threading.Lock()
 BASE = registry.BASE_VERSION
 DONE = (GenStatus.promoted, GenStatus.rejected)
@@ -342,6 +341,16 @@ class _Generation:
         self._log(f"{self.gid} {status.value}; current {current[0]} + {current[1]}")
         return self.rec
 
+    def _shared_base_score(self) -> float | None:
+        """The score of the first finished generation 0 of any lineage (tiny or full like this run). Re-measuring would
+        drift: a run that timed out every time in the first measurement counts as failed there and may pass later."""
+        done = [
+            g
+            for g in registry.list_generations(self.conn)
+            if g.generation == 0 and g.status in DONE and g.eval_score is not None and is_tiny(g) == self.tiny
+        ]
+        return min(done, key=lambda g: g.finished_at).eval_score if done else None
+
     def _eval_task_ids(self) -> list[str]:
         ids = sorted(self.ctx.env.eval_set(EVAL_SET_ID).task_ids)
         return ids if self.sizes.eval_tasks is None else ids[: self.sizes.eval_tasks]
@@ -506,16 +515,18 @@ class _Generation:
     def _gating(self) -> GenStatus:
         if self.generation == 0:
             with _BASE_EVAL_LOCK:
-                score = self.ctx.eval_score(
-                    self.conn,
-                    self.ctx.agent,
-                    model_version=BASE,
-                    prompt_version=BASE_PROMPT_VERSION,
-                    arm=self.arm,
-                    seed=self.seed,
-                    generation=0,
-                    eval_task_ids=self._eval_task_ids(),
-                )
+                score = self._shared_base_score()
+                if score is None:
+                    score = self.ctx.eval_score(
+                        self.conn,
+                        self.ctx.agent,
+                        model_version=BASE,
+                        prompt_version=BASE_PROMPT_VERSION,
+                        arm=self.arm,
+                        seed=self.seed,
+                        generation=0,
+                        eval_task_ids=self._eval_task_ids(),
+                    )
             self._set(eval_score=score, parent_eval_score=score)
             return GenStatus.promoted
         rec = self.rec
