@@ -107,6 +107,7 @@ MODEL_POLL_S = 5.0
 MODEL_TIMEOUT_S = 600.0
 DEPLOYMENT_POLL_S = 10.0
 WAKE_TIMEOUT_S = 1500.0  # the platform's boot ceiling is 1200 s
+APPEND_BATCH_BYTES = 1_500_000  # per datasets.append call; whole-file uploads over a few MB fail
 ATTACH_POLL_S = 5.0  # requests for an attaching adapter get 503 with Retry-After: 5
 ATTACH_TIMEOUT_S = 900.0
 
@@ -372,8 +373,7 @@ class VeriTrainer:
         log.info("veri: managed sft_text trains with seed 42; lineage seed %d is not sent (SPEC 9.8)", seed, extra=ctx)
 
         digest = hashlib.sha256(rows_path.read_bytes()).hexdigest()[:12]
-        with _veri_call(f"uploading {rows_path.name}"):
-            ds = self.client.datasets.upload(str(rows_path), name=f"{version}-{digest}")  # same bytes, same id
+        ds = self._upload_rows(rows_path, veri_name(f"{version}-{digest}"))
         log.info("veri: dataset %s (%d rows)", ds.id, stats.rows, extra=ctx)
         with _veri_call(f"creating the training job for {version}"):
             job = self.client.training_jobs.create(
@@ -475,6 +475,43 @@ class VeriTrainer:
             log.warning("veri: cancelled training job %s", job_id)
         except (VeriError, httpx.HTTPError) as e:
             log.error("veri: could not cancel training job %s (%r); cancel it on the dashboard", job_id, e)
+
+    def _upload_rows(self, rows_path: Path, name: str) -> Any:
+        """The dataset holding every row of rows_path, as an append-only `completion` stream named `name` (unique per
+        file digest). Uploads over a few MB fail with "Error parsing multipart/form-data request" (found live: 8 MB
+        failed, 2 MB worked), so rows go in APPEND_BATCH_BYTES batches. Re-running resumes after the stream's head;
+        a stream longer than the file is an error, never silently reused."""
+        rows = [json.loads(line) for line in rows_path.read_text().splitlines() if line.strip()]
+        with _veri_call(f"looking up dataset {name}"):
+            existing = [d for d in self.client.datasets.list() if d.name == name]
+        if existing:
+            ds = existing[0]
+        else:
+            with _veri_call(f"creating dataset {name}"):
+                ds = self.client.datasets.create(name, format="completion")
+        head = ds.head_row or 0
+        if head > len(rows):
+            raise VeriBackendError(
+                f"dataset {ds.id} ({name}) has {head} rows, more than the {len(rows)} in {rows_path}"
+            )
+        batch: list[dict] = []
+        size = 0
+        for row in rows[head:]:
+            n = len(json.dumps(row, ensure_ascii=False))
+            if batch and size + n > APPEND_BATCH_BYTES:
+                with _veri_call(f"appending {len(batch)} rows to dataset {ds.id}"):
+                    self.client.datasets.append(ds.id, rows=batch)
+                batch, size = [], 0
+            batch.append(row)
+            size += n
+        if batch:
+            with _veri_call(f"appending {len(batch)} rows to dataset {ds.id}"):
+                self.client.datasets.append(ds.id, rows=batch)
+        with _veri_call(f"reading dataset {ds.id}"):
+            ds = self.client.datasets.get(ds.id)
+        if (ds.head_row or 0) != len(rows):
+            raise VeriBackendError(f"dataset {ds.id} ({name}) ended with {ds.head_row} rows, expected {len(rows)}")
+        return ds
 
     def _save_adapter(self, job_id: str, version: str) -> Any:
         """Library model holding the LoRA adapter (idempotent per job); waits until it is ready to attach."""

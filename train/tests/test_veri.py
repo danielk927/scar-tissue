@@ -99,7 +99,13 @@ class FakeVeri:
         self.create_error = create_error
         self.uploaded: list[str] = []
         self.created_hyperparameters = None
-        self.datasets = SimpleNamespace(upload=self._rec("datasets.upload", self._upload))
+        self.streams: dict[str, SimpleNamespace] = {}
+        self.datasets = SimpleNamespace(
+            list=self._rec("datasets.list", lambda: list(self.streams.values())),
+            create=self._rec("datasets.create", self._create),
+            append=self._rec("datasets.append", self._append),
+            get=self._rec("datasets.get", lambda ds_id: self.streams[ds_id]),
+        )
         self.training_jobs = SimpleNamespace(
             list=self._rec("training_jobs.list", lambda **kw: self.jobs),
             create=self._rec("training_jobs.create", self._create_job),
@@ -145,9 +151,17 @@ class FakeVeri:
     def _next(statuses: list[str]) -> str:
         return statuses.pop(0) if len(statuses) > 1 else statuses[0]
 
-    def _upload(self, path, name=None):
-        self.uploaded.append(Path(path).read_text(encoding="utf-8"))
-        return SimpleNamespace(id="ds_1", name=name)
+    def _create(self, name, format):
+        ds = SimpleNamespace(id=f"ds_{len(self.streams) + 1}", name=name, format=format, head_row=0, rows=[])
+        self.streams[ds.id] = ds
+        return ds
+
+    def _append(self, ds_id, rows):
+        ds = self.streams[ds_id]
+        ds.rows.extend(rows)
+        ds.head_row = len(ds.rows)
+        self.uploaded.append(rows)
+        return {"dataset_id": ds_id, "count": len(rows), "head_row": ds.head_row}
 
     def _job(self, status):
         return SimpleNamespace(
@@ -307,7 +321,10 @@ def test_trainer_uploads_trains_and_saves_the_adapter(tmp_path, caplog):
     assert adapter == TrainedAdapter(adapter_uri="mdl_1", training_job_id="job_1")
     assert fake.names() == [
         "training_jobs.list",
-        "datasets.upload",
+        "datasets.list",
+        "datasets.create",
+        "datasets.append",
+        "datasets.get",
         "training_jobs.create",
         "training_jobs.get",
         "training_jobs.get",
@@ -315,9 +332,9 @@ def test_trainer_uploads_trains_and_saves_the_adapter(tmp_path, caplog):
         "models.create_from_training_job",
         "models.get",
     ]
-    (path,), kw = fake.call("datasets.upload")
-    assert path.endswith(f"{VERSION}.veri.jsonl") and kw["name"].startswith(f"{VERSION}-")
-    assert [json.loads(x) for x in fake.uploaded[0].splitlines()] == veri.veri_rows(spec_line())
+    (name,), kw = fake.call("datasets.create")
+    assert name.startswith(f"{SERVE}-") and kw == {"format": "completion"}
+    assert fake.streams["ds_1"].rows == veri.veri_rows(spec_line())
     _, kw = fake.call("training_jobs.create")
     assert kw == {
         "base_model": BASE,
@@ -366,7 +383,7 @@ def test_trainer_reuses_a_completed_or_running_job_of_the_version(tmp_path, stat
     fake.jobs = [other, fake._job(status)]
     adapter = train(make_trainer(fake), tmp_path)
     assert adapter == TrainedAdapter(adapter_uri="mdl_1", training_job_id="job_1")
-    assert "datasets.upload" not in fake.names() and "training_jobs.create" not in fake.names()
+    assert "datasets.create" not in fake.names() and "training_jobs.create" not in fake.names()
     assert fake.call("training_jobs.list")[1] == {"limit": 100, "method": "sft_text"}
 
 
@@ -381,7 +398,14 @@ def test_trainer_prefers_the_completed_job_and_retrains_after_a_failure(tmp_path
     fake = FakeVeri()
     fake.jobs = [fake._job("failed"), fake._job("cancelled")]
     train(make_trainer(fake), tmp_path)
-    assert fake.names()[:3] == ["training_jobs.list", "datasets.upload", "training_jobs.create"]
+    assert fake.names()[:6] == [
+        "training_jobs.list",
+        "datasets.list",
+        "datasets.create",
+        "datasets.append",
+        "datasets.get",
+        "training_jobs.create",
+    ]
 
 
 def test_trainer_raises_when_the_job_fails(tmp_path):
@@ -623,7 +647,7 @@ def test_smoke_runs_every_step_against_fakes(tmp_path):
         check=lambda url, model, key: checked.append((url, model)) or (["get_accounts({})"], 0.5),
     )
     assert checked == [(DEP_URL, "scar-base"), (DEP_URL, veri.veri_name(veri.SMOKE_VERSION))]
-    assert len(fake.uploaded[0].splitlines()) == 3  # one row per assistant turn of the toy transcript
+    assert len(fake.streams["ds_1"].rows) == 3  # one row per assistant turn of the toy transcript
     assert fake.call("training_jobs.create")[1]["hyperparameters"]["max_steps"] == 2
     assert fake.call("deployments.attach_adapter")[1] == {"serve_name": "d-smoke-g1", "model_id": "mdl_1"}
     assert (out["training_job_id"], out["job_cost_usd"], out["balance_before_usd"]) == ("job_1", 0.42, 20.0)
@@ -636,3 +660,29 @@ def test_veri_name_lowercases_and_strips_invalid_characters():
     assert len(veri.veri_name("A" * 100)) == 63
     with pytest.raises(ValueError):
         veri.veri_name("---")
+
+
+def test_rows_upload_in_batches_and_resume_after_the_stream_head(tmp_path, monkeypatch):
+    rows = [
+        {"prompt": [{"role": "user", "content": "x" * 50}], "completion": [], "tools": "[]", "i": i} for i in range(7)
+    ]
+    path = tmp_path / "rows.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    monkeypatch.setattr(veri, "APPEND_BATCH_BYTES", 250)  # about 2 rows per append
+    fake = FakeVeri()
+    trainer = make_trainer(fake)
+    ds = trainer._upload_rows(path, "d-s0-g1-abc")
+    assert ds.head_row == 7 and fake.streams[ds.id].rows == rows
+    assert len(fake.uploaded) > 1 and all(len(b) <= 2 for b in fake.uploaded)
+
+    # a stream left half-filled by an interrupted run gets only the missing rows
+    fake.streams[ds.id].rows = rows[:3]
+    fake.streams[ds.id].head_row = 3
+    fake.uploaded.clear()
+    again = trainer._upload_rows(path, "d-s0-g1-abc")
+    assert again.id == ds.id and fake.streams[ds.id].rows == rows
+    assert [r["i"] for b in fake.uploaded for r in b] == [3, 4, 5, 6]
+
+    fake.streams[ds.id].head_row = 9
+    with pytest.raises(veri.VeriBackendError, match="more than"):
+        trainer._upload_rows(path, "d-s0-g1-abc")
