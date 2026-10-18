@@ -144,7 +144,7 @@ Everything below is merged into `main`, apart from this note (PR). Full details 
 - **8. Demo:** 10 questions confirmed failing on base through the live judge flow, plus a minute-by-minute script with fallbacks and setup steps, all in `docs/DEMO.md`.
 
 **Needs a human**
-- Person 2: add the Sentry screenshots (`docs/screenshots/`) and the saved view links. Done since the first version of this note: the spot check (P2-07) and a session replay.
+- Person 2: nothing left but the rehearsals. Done since the first version of this note: the spot check (P2-07), Session Replay, the judge-click-to-run trace (the browser's `GET /ask` is the root of the agent run's trace), the saved Sentry view links, and 8 submission screenshots in `docs/screenshots/` (listed in `docs/DEMO.md`).
 - Person 1:
   - Set `PARSE_LM_BASE_URL`, `PARSE_LM_API_KEY` and `PARSE_LM_MODEL` to the `REFLECTION_LM_*` values (Groq `openai/gpt-oss-120b`). Expect up to about 15 s per parse when Groq's free per-minute token limit is hit.
   - Pull `main` and restart the agent and web app.
