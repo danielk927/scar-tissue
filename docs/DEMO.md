@@ -70,7 +70,7 @@ Person 2 checked these on 2026-10-18:
 - Traces show agent and env spans in one trace.
 - The AI Agents Overview dashboard shows runs, tokens and tool calls.
 
-Session Replay: confirmed 2026-10-18; Person 2's judge session (Windows, Chrome) appears in Session Replay.
+Session Replay: confirmed 2026-10-18; Person 2's judge session (Windows, Chrome) appears in Session Replay. A judge click links to its backend run: that session's trace has the browser's `GET /ask` at the root and the `ledger-agent` run inside it (`sentry-judge-trace.png`).
 
 Two notes for the services:
 - The agent no longer sends its outgoing HTTP request logs (fixed 2026-10-18).
@@ -80,16 +80,18 @@ Two notes for the services:
 
 In `docs/screenshots/`:
 
-| File | Shows | Status |
-|---|---|---|
-| `sentry-issues.png` | `agent_run_failed` issues, one per (template, stop reason) | saved |
-| `sentry-replays.png` | Session Replay list with Person 2's live judge session | saved (a list, not the player) |
-| `app-judge-result.png` | `/ask`: a judge question on Ashgrove Family Law, answered 57000 against an expected 56999.95, marked Failed | saved |
-| `app-run-viewer.png` | `/runs/<id>`: outcome, verifier detail, Sentry trace link, Re-run button, transcript | saved |
-| `sentry-trace.png` | one agent trace waterfall (agent and env spans in one trace) | **to add** |
-| `sentry-agent-activity.png` | the same trace's Agent Activity tab | **to add** |
-| `sentry-agents.png` | AI Agents Overview dashboard | **to add** |
-| `sentry-replay.png` | the replay player paused on the `/ask` result card | **to add** |
+| File | Shows |
+|---|---|
+| `sentry-issues.png` | `agent_run_failed` issues, one per (template, stop reason) |
+| `sentry-issue-detail.png` | One `agent_run_failed` issue: 24 events, `warning` level, linked to its run trace |
+| `sentry-judge-trace.png` | A judge question's trace: the root is the browser's `GET /ask`, with the `ledger-agent` run nested inside (Agent Activity timeline: chat, `get_accounts`, `get_transactions` with the parsed dates, the system prompt and the judge's question) |
+| `sentry-agents.png` | The AI Agents Overview dashboard: agent runs, LLM calls by model, tokens, tool calls |
+| `sentry-agent-traces.png` | The dashboard's per-run trace table: duration, errors, LLM calls, tool calls, tokens |
+| `sentry-replays.png` | The Session Replay list with Person 2's live judge session |
+| `app-judge-result.png` | `/ask`: a question on Ashgrove Family Law, answered 57000 against an expected 56999.95, marked Failed |
+| `app-run-viewer.png` | `/runs/<id>`: outcome, verifier detail, Sentry trace link, Re-run button, transcript |
+
+Optional, if time allows: the replay player paused on the `/ask` result card (`sentry-replay.png`).
 
 ## Rehearsals
 
