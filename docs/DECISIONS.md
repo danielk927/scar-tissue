@@ -47,6 +47,7 @@ Append-only. One line per decision, under your person's heading (SPEC R11).
 - 2026-10-17: Session Replay rate comes from `NEXT_PUBLIC_SENTRY_REPLAY_RATE` (default 0, set 1 for the demo) because the free plan has 50 replays; error replays stay at 100%.
 - 2026-10-17: Web pins `next@16.3.8` and `@sentry/nextjs@11.4.0` (newest releases at least two weeks old).
 - 2026-10-18: The agent loop re-attaches provider-only tool-call fields (Gemini's `extra_content` thought signature, required on the next turn) to outgoing requests, keyed by tool-call ID within one run. Stored `RunResult.messages` never contain them, so the contract shape is unchanged; a no-op for providers without the field.
+- 2026-10-18: Mining re-triage (supersedes the 2026-10-17 "any record exists" idempotency line): `/failures/mine` triages every failed traffic/judge run of the generation that has no record yet, then re-applies the cap and order over all records of the generation in one transaction (records excluded only by `over_cap` compete again, so a late judge failure can displace a traffic one). Runs already triaged never cost another Jev call; concurrent mines are serialized by row locks and `ON CONFLICT (run_id) DO NOTHING`.
 
 ## Person 3
 

@@ -1,5 +1,7 @@
 """Postgres access. Person 2 writes only app.runs and app.failures (SPEC 8.6); everything else is read-only."""
 
+from collections.abc import Callable
+
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
@@ -82,6 +84,30 @@ class Store:
                     (f.failure_id, f.run_id, f.arm, f.seed, f.generation, f.included,
                      Jsonb(f.model_dump(mode="json")), f.created_at),
                 )
+
+    async def save_mined(self, arm: str, seed: int, generation: int, new: list[FailureRecord],
+                         recap: Callable[[list[FailureRecord]], list[FailureRecord]]) -> list[FailureRecord]:
+        """Insert newly triaged records and re-apply the cap over the whole generation, in one transaction.
+        The row lock serializes concurrent mines; a run triaged twice concurrently keeps its first record."""
+        async with self.pool.connection() as conn, conn.transaction():
+            for f in new:
+                await conn.execute(
+                    """INSERT INTO app.failures (failure_id, run_id, arm, seed, generation, included, body, created_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (run_id) DO NOTHING""",
+                    (f.failure_id, f.run_id, f.arm, f.seed, f.generation, f.included,
+                     Jsonb(f.model_dump(mode="json")), f.created_at),
+                )
+            rows = await (await conn.execute(
+                """SELECT body FROM app.failures WHERE arm = %s AND seed = %s AND generation = %s
+                   ORDER BY created_at, failure_id FOR UPDATE""", (arm, seed, generation))).fetchall()
+            before = [FailureRecord.model_validate(r[0]) for r in rows]
+            after = recap(before)
+            for old, rec in zip(before, after, strict=True):
+                if (old.included, old.exclusion_reason) != (rec.included, rec.exclusion_reason):
+                    await conn.execute(
+                        "UPDATE app.failures SET included = %s, body = %s WHERE failure_id = %s",
+                        (rec.included, Jsonb(rec.model_dump(mode="json")), rec.failure_id))
+        return after
 
     async def list_failures(self, arm: str | None = None, seed: int | None = None,
                             generation: int | None = None,

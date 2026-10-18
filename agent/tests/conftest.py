@@ -157,6 +157,14 @@ class FakeStore:
     async def insert_failures(self, records):
         self.failures.extend(records)
 
+    async def save_mined(self, arm, seed, generation, new, recap):
+        known = {f.run_id for f in self.failures}
+        self.failures.extend(f for f in new if f.run_id not in known)
+        mine = [f for f in self.failures if (f.arm, f.seed, f.generation) == (arm, seed, generation)]
+        updated = {f.failure_id: f for f in recap(mine)}
+        self.failures = [updated.get(f.failure_id, f) for f in self.failures]
+        return [updated[f.failure_id] for f in mine]
+
     async def list_failures(self, arm=None, seed=None, generation=None, included=None):
         return [f for f in self.failures
                 if (arm is None or f.arm == arm) and (seed is None or f.seed == seed)

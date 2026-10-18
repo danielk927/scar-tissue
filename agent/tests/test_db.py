@@ -81,6 +81,10 @@ async def test_failures_and_mining(db):
     assert Jev.calls == 2 and [f.failure_id for f in again] == [f.failure_id for f in first]
     assert len(await db.list_failures(arm="D", seed=0, generation=1, included=True)) == 2
 
+    await db.insert_run(make_run("run_4"))  # a failure that arrives after the first mine
+    third = await mine(REQ, db, Jev())
+    assert Jev.calls == 3 and sorted(f.run_id for f in third) == ["run_1", "run_2", "run_4"]
+
     dup = to_record(make_run("run_1"), Triage("other", 0.5, {}, 0.1, "j"), REQ)
     with pytest.raises(psycopg.errors.UniqueViolation):  # run_id is UNIQUE in app.failures; whole batch rolls back
         await db.insert_failures([dup])

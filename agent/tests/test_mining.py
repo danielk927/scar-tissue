@@ -15,7 +15,7 @@ from scar_schemas.models import (
 )
 
 from scar_agent.jev import TRIAGE_QUESTIONS, Triage
-from scar_agent.mining import apply_cap, build_state, exclusion_reason, mine, to_record
+from scar_agent.mining import apply_cap, build_state, exclusion_reason, mine, recap, to_record
 
 REQ = MineRequest(arm="D", seed=0, generation=1, model_version="base", prompt_version="system_v1")
 
@@ -113,3 +113,38 @@ async def test_mine_selects_runs_and_is_idempotent(store):
     second = await mine(REQ, store, jev)
     assert len(jev.triage_calls) == 3  # no new Jev calls
     assert [f.failure_id for f in second] == [f.failure_id for f in first]
+
+
+async def test_mine_triages_runs_added_after_first_mine(store):
+    store.runs = [make_run("run_1"), make_run("run_2")]
+    jev = FakeJev()
+    first = await mine(REQ, store, jev)
+    assert sorted(f.run_id for f in first) == ["run_1", "run_2"] and len(jev.triage_calls) == 2
+    store.runs.append(make_run("run_3", purpose="judge", origin=Origin.judge))  # e.g. a judge run arrives later
+    second = await mine(REQ, store, jev)
+    assert len(jev.triage_calls) == 3  # only the new run costs a Jev call
+    assert sorted(f.run_id for f in second) == ["run_1", "run_2", "run_3"]
+    assert {f.run_id: f.failure_id for f in second if f.run_id != "run_3"} == {f.run_id: f.failure_id for f in first}
+
+
+async def test_cap_recomputed_over_whole_generation(store, monkeypatch):
+    import scar_agent.mining as mining_mod
+    monkeypatch.setattr(mining_mod, "FAILURE_CAP_PER_GEN", 2)
+    store.runs = [make_run("run_a"), make_run("run_b"), make_run("run_c")]
+    first = await mine(REQ, store, FakeJev())
+    assert sum(f.included for f in first) == 2
+    assert [f.exclusion_reason for f in first if not f.included] == ["over_cap"]
+    store.runs.append(make_run("run_j", purpose="judge", origin=Origin.judge))
+    second = {f.run_id: f for f in await mine(REQ, store, FakeJev())}
+    assert second["run_j"].included  # judge failures first, even when they arrive late
+    assert sum(f.included for f in second.values()) == 2
+    assert sum(f.exclusion_reason == "over_cap" for f in second.values()) == 2
+
+
+def test_recap_reopens_only_over_cap():
+    t = lambda p: Triage("reasoning_error", 0.9, {}, p, "jev-1.14.0")  # noqa: E731
+    capped = apply_cap([to_record(make_run(f"run_{i}"), t(0.9 - i / 10), REQ) for i in range(3)], cap=1)
+    low = to_record(make_run("run_low"), t(0.1), REQ)
+    out = {r.run_id: r for r in recap(capped + [low], cap=2)}
+    assert out["run_0"].included and out["run_1"].included and out["run_2"].exclusion_reason == "over_cap"
+    assert out["run_low"].exclusion_reason == "learnable_p_below_threshold"

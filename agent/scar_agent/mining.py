@@ -65,8 +65,9 @@ def exclusion_reason(cause: FailureCause, learnable_p: float, stop_reason: str) 
     return None
 
 
-def apply_cap(records: list[FailureRecord], cap: int = FAILURE_CAP_PER_GEN) -> list[FailureRecord]:
+def apply_cap(records: list[FailureRecord], cap: int | None = None) -> list[FailureRecord]:
     """Judge failures first, then highest learnable_p, ties by run_id. Beyond the cap -> over_cap."""
+    cap = FAILURE_CAP_PER_GEN if cap is None else cap
     included = sorted(
         (r for r in records if r.included),
         key=lambda r: (r.origin != Origin.judge, -r.learnable_p, r.run_id),
@@ -77,6 +78,16 @@ def apply_cap(records: list[FailureRecord], cap: int = FAILURE_CAP_PER_GEN) -> l
         if r.failure_id in over else r
         for r in records
     ]
+
+
+def recap(records: list[FailureRecord], cap: int | None = None) -> list[FailureRecord]:
+    """Re-apply the cap over a whole generation: records excluded only by the cap compete again."""
+    reopened = [
+        r.model_copy(update={"included": True, "exclusion_reason": None})
+        if r.exclusion_reason == "over_cap" else r
+        for r in records
+    ]
+    return apply_cap(reopened, cap)
 
 
 def to_record(run: RunResult, t: Triage, req: MineRequest) -> FailureRecord:
@@ -106,13 +117,11 @@ def to_record(run: RunResult, t: Triage, req: MineRequest) -> FailureRecord:
 
 
 async def mine(req: MineRequest, store: Store, jev: Jev) -> list[FailureRecord]:
-    existing = await store.list_failures(arm=req.arm, seed=req.seed, generation=req.generation)
-    if existing:
-        return existing  # idempotent: no new Jev calls
-
+    """SPEC 9.4: triage every failed traffic/judge run of the generation that has no record yet, then apply
+    the cap and order over all records of the generation. Runs already triaged never cost another Jev call."""
     runs = await store.failed_runs_to_mine(req.arm, req.seed, req.generation)
     if not runs:
-        return []
+        return await store.list_failures(arm=req.arm, seed=req.seed, generation=req.generation)
     meta = await store.get_task_meta(sorted({r.task_id for r in runs}))
     sem = asyncio.Semaphore(JEV_CONCURRENCY)
 
@@ -125,6 +134,5 @@ async def mine(req: MineRequest, store: Store, jev: Jev) -> list[FailureRecord]:
                 raise Unavailable(f"jev triage failed for {run.run_id}: {e!r}") from e
         return to_record(run, t, req)
 
-    records = apply_cap(list(await asyncio.gather(*(triage_one(r) for r in runs))))
-    await store.insert_failures(records)
-    return await store.list_failures(arm=req.arm, seed=req.seed, generation=req.generation)
+    new = list(await asyncio.gather(*(triage_one(r) for r in runs)))
+    return await store.save_mined(req.arm, req.seed, req.generation, new, recap)
