@@ -15,6 +15,15 @@ Append-only. One line per decision, under your person's heading (SPEC R11).
 - 2026-10-17: Tool calls run with a 10 s statement timeout (503 `tool_timeout`); DB failures are 503 `db_unavailable`; unknown account/vendor filters return no rows; null optional args count as absent; numeric args sent as strings are rejected.
 - 2026-10-17: The verifier counts a repeated entry_id once and matches journal entries one-to-one (not greedily).
 - 2026-10-17: The env service is served from `scar_env.main:app` (Sentry init lives there, so tests never send events).
+- 2026-10-17: Template prompts show names, ISO dates, "March 2026" and "$1,234.56", never raw IDs, except `book.reclassify`, which shows the txn_id (vendor + date + amount is not unique).
+- 2026-10-17: Template definitions pinned in `docs/TEMPLATES.md`: duplicate pairs need both transactions in the period and same-day pairs break ties by the larger txn_id; vendor median = exact mean of the two middle values, outliers strictly above 3x; share rounds half away from zero; mom_change = month minus previous month.
+- 2026-10-17: Difficulty: period aggregations use 7-31 / 32-92 / 93-366 day periods for difficulty 1 / 2 / 3; other templates support only their base difficulty. Generation cycles difficulty 1, 2, 3 within each family.
+- 2026-10-17: Prepaid tasks amortize only into expenses a business prepays and use at most 6 months (fits MAX_STEPS); reclassify targets are operating accounts only.
+- 2026-10-17: `/tasks/from_params` accepts periods overlapping the data range, skips the degenerate rule but rejects undefined answers; judge tasks get the template's base difficulty.
+- 2026-10-17: Seed tasks: 30 hand-written prompts (`env/scar_env/seed_tasks.py`), answers from template SQL, task IDs fixed by `fixtures/tasks_seed.jsonl`; `load` re-verifies answers against the ledger.
+- 2026-10-17: Learn-step B: lesson ID = `{lineage}:{failure_id}` (one lesson per failure); prompt keeps the newest lessons (by generation, then failure_id) under a chars/3 token estimate of 3,000.
+- 2026-10-17: Learn-step C: train/val pool draw `random.Random(f"gepa:{seed}:{generation}")`, first 50 to train, next 50 to val; candidate IDs `C-cand-<sha256(text)[:16]>`; a custom gepa stopper keeps agent runs strictly within GEPA_MAX_METRIC_CALLS (may leave up to 56 unspent); a dead reflection LM or an all-infrastructure-failure batch is a 503, never a silently stored seed prompt.
+- 2026-10-17: Report: the score after a generation is the candidate's if promoted, else the parent's (also for failed generations); arm A repeats generation 0. Lives at `experiments/scar_experiments/report.py`.
 
 ## Person 2
 
