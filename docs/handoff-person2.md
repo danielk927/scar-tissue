@@ -7,6 +7,13 @@ Commit on `p2/<topic>` branches and push often, with clear messages; merge your 
 Anything that touches `schemas/` or `docs/SPEC.md` needs a PR for Person 1.
 Deadline: Devpost submission Oct 18, 12:00pm PDT; demo freeze starts around 08:00 PDT.
 
+## Morning update (05:00 PDT)
+
+- Generation 1 results (held-out `eval_v1`, base 0.45): D-s0-g1 (Veri LoRA on 225 examples) scored **0.71** and improved every family (aggregation 0.29 to 0.79, anomaly 0.49 to 0.55, bookkeeping 0.61 to 0.79). B-s0-g1 (lessons in the prompt) scored 0.083: its lessons spell out `submit_answer({"number": X})` as text and the model copies that instead of calling the tool. C-s0-g1 (GEPA) is running.
+- Gate rule changed (schemas 1.3.0, SPEC 9.9): the parent is re-run on the same regression set, and the candidate must score at least the parent's regression score minus 0.05. `base` re-passed only 81 of its own 90 regression tasks, so the old 95% bar rejected everything. D-s0-g1 is being re-gated under the new rule.
+- Web: `GenerationRecord` has a new optional `parent_regression_score` (null on older records). Consider showing "regression 0.867 vs parent 0.900" in the dashboard table next to `regression_score`, and use 0.71 vs 0.45 as the headline in the demo script once D-s0-g1's re-gate finishes.
+- Train now runs one agent batch at a time across lineages (two overlapping gates timed out half their model calls), and picked up your timeout-retry fix.
+
 ## 0. Current state (read first)
 
 - `main` has: env service (all of P1-01..P1-14), train service with the loop runner, data builder, gate, Veri backend, base registration, smoke scripts (P3-02..P3-10), and merged PRs #1 (Veri spec change, D-03/D-04), #2 (`system_v1` step 6 reworded) and #3 (constants 1.1.0: `K_SAMPLES` 4, `VARIANTS_PER_FAILURE` 5, `FAILURE_CAP_PER_GEN` 25).
