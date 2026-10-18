@@ -9,6 +9,7 @@ from psycopg.types.json import Jsonb
 from scar_schemas.models import (
     ChatMessage,
     ExpectedAnswer,
+    FailureRecord,
     GenerationRecord,
     GenStatus,
     ModelVersion,
@@ -224,3 +225,27 @@ class FakeAgent(AgentClient):
                 insert_run(self.conn, run)
                 runs.append(run)
         return runs
+
+
+def failure(failure_id: str, run_id: str, task_id: str, *, included: bool = True, **kw) -> FailureRecord:
+    """A FailureRecord as agent /failures/mine returns it. Defaults: arm D, seed 0, generation 1, base model."""
+    fields = dict(
+        failure_id=failure_id,
+        run_id=run_id,
+        task_id=task_id,
+        arm="D",
+        seed=0,
+        generation=1,
+        model_version="base",
+        origin="generated",
+        cause="reasoning_error",
+        cause_confidence=0.9,
+        cause_probabilities={"reasoning_error": 0.9},
+        learnable_p=0.9,
+        included=included,
+        exclusion_reason=None if included else "learnable_p_below_threshold",
+        jev_model="jev-1.14.0",
+        created_at=NOW,
+    )
+    fields.update(kw)
+    return FailureRecord(**fields)
