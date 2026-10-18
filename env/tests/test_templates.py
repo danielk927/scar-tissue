@@ -67,16 +67,17 @@ def reference(ledger, template_id: str, cid: str, p: dict):
         part = sum((t.amount for t in expense if t.account_id == p["account_id"]), zero)
         return (100 * part / sum(t.amount for t in expense)).quantize(Decimal("0.01"), ROUND_HALF_UP)
     if template_id == "anom.duplicate_payments":
+        same = defaultdict(list)  # (vendor, amount) -> transactions, so the pair scan stays small on real data
+        for t in period:
+            if t.vendor_id:
+                same[(t.vendor_id, t.amount)].append(t)
         return sorted(
             {
                 b.txn_id
-                for a in period
-                for b in period
-                if a.vendor_id
-                and a.vendor_id == b.vendor_id
-                and a.amount == b.amount
-                and (a.txn_date, a.txn_id) < (b.txn_date, b.txn_id)
-                and (b.txn_date - a.txn_date).days <= 3
+                for group in same.values()
+                for a in group
+                for b in group
+                if (a.txn_date, a.txn_id) < (b.txn_date, b.txn_id) and (b.txn_date - a.txn_date).days <= 3
             }
         )
     if template_id == "anom.round_amounts_over":
@@ -506,6 +507,16 @@ def test_bookkeeping_samplers_follow_the_dataset_decisions(conn, ledger):
     for cid in TRAIN:
         company = load_company(conn, cid)
         rows = {t.txn_id: t for t in ledger.company_txns(cid)}
+        accruals = set()
+        for seed in range(40):
+            p = TEMPLATES["book.accrual"].sample(conn, company, random.Random(seed), 1)
+            accruals.add(
+                (company.account_name(p["expense_account_id"]), company.account_name(p["liability_account_id"]))
+            )
+        assert accruals == {
+            ("Wages", "Wages Payable"),
+            *((e, "Accounts Payable") for e in ("Rent and Lease", "Utilities", "Freight and Delivery", "Insurance")),
+        }
         for seed in range(20):
             prepaid = TEMPLATES["book.prepaid_amortization"].sample(conn, company, random.Random(seed), 2)
             assert prepaid["prepaid_account_id"] == f"{cid}:acct-prepaid-expenses"

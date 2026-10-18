@@ -31,6 +31,16 @@ from .base import (
 
 PREPAID_ACCOUNT = "acct-prepaid-expenses"  # added to every company by the loader (docs/DECISIONS.md)
 PREPAID_MONTHS = (2, 3, 4, 6, 12)
+# The accrual sampler credits the liability an accountant would use (by account name, the same in every company);
+# any other expense is accrued to Accounts Payable. These expenses are never accrued to a payable.
+ACCRUAL_LIABILITY = {
+    "Wage Expense": "Wages Payable",
+    "Project Manager Wages": "Wages Payable",
+    "Wages": "Wages Payable",
+    "Interest Expense": "Accrued Interest",
+    "Income Tax Expense": "Income Tax Payable",
+}
+NOT_ACCRUED = {"Bad Debts", "Cost of Goods Sold", "Depreciation"}
 
 
 def _entry(entry_date: str, debit_account: str, credit_account: str, amount: Decimal) -> JournalEntrySpec:
@@ -84,8 +94,7 @@ class Accrual(Template):
     Params = AccrualParams
     phrasings = (
         "Record an accrual of {amount} for {expense_account}, crediting {liability_account}, dated {entry_date}.",
-        "On {entry_date}, accrue {amount} of {expense_account} expense that is owed, recording the liability in"
-        " {liability_account}.",
+        "On {entry_date}, accrue {amount} owed for {expense_account}, recording the liability in {liability_account}.",
         "Book a journal entry dated {entry_date} that debits {expense_account} and credits {liability_account}"
         " for {amount}.",
         "We owe {amount} for {expense_account} that has not been billed yet. Accrue it on {entry_date} against"
@@ -95,13 +104,20 @@ class Accrual(Template):
     )
 
     def sample(self, conn, company, rng, difficulty):
-        expense, liability = company.accounts_of_type("expense"), company.accounts_of_type("liability")
+        liabilities = {company.account_name(a): a for a in company.accounts_of_type("liability")}
+        pairs = []
+        for expense in company.accounts_of_type("expense"):
+            name = company.account_name(expense)
+            liability = liabilities.get(ACCRUAL_LIABILITY.get(name, "Accounts Payable"))
+            if name not in NOT_ACCRUED and liability:
+                pairs.append((expense, liability))
         dates = month_ends(company)
-        if not (expense and liability and dates):
+        if not (pairs and dates):
             return None
+        expense, liability = rng.choice(pairs)
         return {
-            "expense_account_id": rng.choice(expense),
-            "liability_account_id": rng.choice(liability),
+            "expense_account_id": expense,
+            "liability_account_id": liability,
             "amount": _cents(5_000, 500_000, rng),
             "entry_date": rng.choice(dates).isoformat(),
         }
