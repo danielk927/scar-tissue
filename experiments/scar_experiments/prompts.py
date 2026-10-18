@@ -7,20 +7,20 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 from scar_schemas.constants import BASE_PROMPT_VERSION
-from scar_schemas.models import PromptVersion
+from scar_schemas.models import LearnRequest, LearnResult, PromptVersion
 
 from . import REPO_ROOT
-from .errors import NotFoundError
+from .errors import NotFoundError, StateConflictError
 
 SYSTEM_V1_PATH = REPO_ROOT / "agent" / "scar_agent" / "prompts" / "system_v1.md"
 
 
 def read_system_v1(path: Path | None = None) -> str:
-    """The system_v1 text without trailing whitespace. Raises FileNotFoundError if Person 2's file is missing."""
+    """The system_v1 text as the agent loads it (trailing newlines stripped). Raises FileNotFoundError if missing."""
     path = path or SYSTEM_V1_PATH
     if not path.is_file():
         raise FileNotFoundError(f"system_v1 prompt file not found: {path} (Person 2, SPEC 9.2)")
-    return path.read_text().rstrip()
+    return path.read_text().rstrip("\n")
 
 
 def get_prompt_version(conn: psycopg.Connection, prompt_version: str) -> PromptVersion | None:
@@ -38,6 +38,18 @@ def store_prompt_version(conn: psycopg.Connection, pv: PromptVersion) -> PromptV
     stored = get_prompt_version(conn, pv.prompt_version)
     assert stored is not None
     return stored
+
+
+def learned_result(conn: psycopg.Connection, prompt_version: str, req: LearnRequest) -> LearnResult | None:
+    """The stored result when this learn-step already ran. A stored version with another parent is a conflict."""
+    pv = get_prompt_version(conn, prompt_version)
+    if pv is None:
+        return None
+    if pv.parent_prompt_version != req.current_prompt_version:
+        raise StateConflictError(
+            f"{prompt_version} was learned from {pv.parent_prompt_version}, not {req.current_prompt_version}"
+        )
+    return LearnResult(prompt_version=prompt_version, notes="already learned; existing prompt version returned")
 
 
 def prompt_text(conn: psycopg.Connection, prompt_version: str, system_v1: str) -> str:

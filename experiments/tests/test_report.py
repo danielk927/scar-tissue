@@ -74,6 +74,18 @@ def test_summarize_uses_current_score_after_each_generation():
     assert by_key["D", 2] == Cell("D", 2, pytest.approx(0.525), 0.5, 0.55, 2)
 
 
+def test_failed_generation_keeps_the_parent_current():
+    cells, left_out = summarize(
+        [
+            _record("D", 0, 1, "promoted", 0.5),
+            _record("D", 0, 2, "failed", None, 0.5),
+            _record("D", 0, 3, "failed", None, None),  # failed before a parent score was recorded: left out
+        ]
+    )
+    by_key = {(c.arm, c.generation): c.mean for c in cells}
+    assert by_key["D", 2] == 0.5 and ("D", 3) not in by_key and left_out == 1
+
+
 def test_base_score_from_generation_zero_records_and_must_be_shared():
     zero = _record("D", 0, 0, "promoted", eval_score=0.41, parent_eval_score=None)
     cells, _ = summarize([zero, _record("D", 0, 1, "rejected", 0.3, 0.41)])
@@ -100,7 +112,7 @@ def test_report_output_is_byte_identical_across_runs(conn, db_url, tmp_path):
     assert "| Arm | Generation | Mean | Min | Max | n |" in text
     assert "| D - Weight updates (ours) | 2 | 52.5% | 50.0% | 55.0% | 2 |" in text
     assert "| A - Frozen base | 2 | 40.0% | 40.0% | 40.0% | 1 |" in text
-    assert text.endswith("Unfinished generation records left out (neither promoted nor rejected): 1.\n")
+    assert text.endswith("Generation records left out (still in progress, or without the score they need): 1.\n")
 
 
 def test_report_without_finished_generations_exits_with_error(db_url, tmp_path):

@@ -21,11 +21,11 @@ HINT = "Check the date range twice."
 LM_VARS = ("REFLECTION_LM_BASE_URL", "REFLECTION_LM_API_KEY", "REFLECTION_LM_MODEL")
 
 
-def _task(conn, origin="generated", parent_failure_id=None) -> Task:
+def _task(conn, origin="generated", parent_failure_id=None, split="train") -> Task:
     task = Task(
         task_id=new_id("task"),
         company_id="company-901",
-        split="train",
+        split=split,
         family="aggregation",
         template_id="agg.total_by_account_period",
         params={},
@@ -72,8 +72,8 @@ def _run(task: Task, passed: bool, prompt_version="system_v1", arm="B", purpose=
     )
 
 
-def _failure(conn, arm="B") -> FailureRecord:
-    task = _task(conn)
+def _failure(conn, arm="B", split="train") -> FailureRecord:
+    task = _task(conn, split=split)
     run = _run(task, passed=False, arm=arm)
     conn.execute(
         "INSERT INTO app.runs (run_id, task_id, model_version, prompt_version, arm, seed, generation, purpose, origin,"
@@ -196,6 +196,19 @@ def test_learn_route_errors_use_spec_bodies(client, conn):
     r = client.post("/learn/B", json=_body("B", [failure.failure_id]))
     assert (r.status_code, r.json()["error"]) == (503, "dependency_unavailable")
     assert "connection refused" in r.json()["detail"]
+
+    # No train pool yet: a state conflict. An eval-split failure: the eval-leakage guard, as a 500 with the SPEC body.
+    c_failure = _failure(conn, arm="C")
+    _task(conn, origin="variant", parent_failure_id=c_failure.failure_id)
+    r = client.post("/learn/C", json=_body("C", [c_failure.failure_id]))
+    assert (r.status_code, r.json()) == (
+        409,
+        {"error": "conflict", "detail": "train pool has 0 usable tasks; GEPA needs 100"},
+    )
+    leaked = _failure(conn, split="eval")
+    r = client.post("/learn/B", json=_body("B", [leaked.failure_id]))
+    assert (r.status_code, r.json()["error"]) == (500, "internal_error")
+    assert r.json()["detail"].startswith("eval leakage: 1 non-train tasks")
 
 
 def test_learn_c_route(client, conn):

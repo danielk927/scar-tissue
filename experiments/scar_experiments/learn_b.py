@@ -15,7 +15,7 @@ from scar_schemas.models import LearnRequest, LearnResult, PromptVersion
 from .clients import ReflectionLM
 from .data import load_included_failures, load_runs, load_tasks, outcome, steps_summary
 from .errors import DependencyError, InvalidRequestError
-from .prompts import get_prompt_version, store_prompt_version
+from .prompts import learned_result, store_prompt_version
 
 LESSON_MAX_WORDS = 40
 PROMPT_MAX_TOKENS = 3000
@@ -72,8 +72,8 @@ def learn_b(conn: psycopg.Connection, req: LearnRequest, reflection_lm: Reflecti
     if req.arm != "B":
         raise InvalidRequestError(f"/learn/B needs arm B, got {req.arm}")
     version = f"B-s{req.seed}-g{req.generation}"
-    if get_prompt_version(conn, version) is not None:
-        return LearnResult(prompt_version=version, notes="already learned; existing prompt version returned")
+    if (done := learned_result(conn, version, req)) is not None:
+        return done
 
     lineage = f"B-s{req.seed}"
     failures = load_included_failures(conn, req.failure_ids)

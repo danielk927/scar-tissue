@@ -32,10 +32,12 @@ from scar_schemas.models import (
 
 from .clients import AgentClient, EnvClient, ReflectionLM
 from .data import load_included_failures, load_tasks, outcome, steps_summary
-from .errors import InvalidRequestError
-from .prompts import candidate_version_id, get_prompt_version, prompt_text, store_prompt_version
+from .errors import DependencyError, InvalidRequestError, StateConflictError
+from .prompts import candidate_version_id, learned_result, prompt_text, store_prompt_version
 
 COMPONENT = "system_prompt"
+# Runs that ended for infrastructure reasons, not the agent's choices (the same set SPEC 9.4 never learns from).
+INFRA_STOP_REASONS = frozenset({"model_error", "tool_error", "timeout"})
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +54,7 @@ class AgentPromptAdapter(gepa.GEPAAdapter):
         self.agent = agent
         self.req = req
         self.agent_runs = 0
+        self.infra_failures = 0
 
     def _candidate_version(self, text: str) -> str:
         """Store the candidate as PromptVersion C-cand-<hex> (reused if it exists) so the agent can load it."""
@@ -88,6 +91,12 @@ class AgentPromptAdapter(gepa.GEPAAdapter):
         if [r.task_id for r in runs] != [t.task_id for t in batch]:
             raise RuntimeError("agent /agent/run_batch returned runs that do not match the requests")
         self.agent_runs += len(runs)
+        infra = sum(r.stop_reason in INFRA_STOP_REASONS for r in runs)
+        # A whole batch lost to infrastructure is an outage: raise (gepa propagates it) rather than score it 0.
+        if infra == len(runs):
+            reasons = ", ".join(sorted({r.stop_reason for r in runs}))
+            raise DependencyError(f"all {len(runs)} agent runs in a GEPA batch ended in {reasons}")
+        self.infra_failures += infra
         return gepa.EvaluationBatch(
             outputs=runs,
             scores=[1.0 if r.passed else 0.0 for r in runs],
@@ -109,6 +118,25 @@ def _trajectory(task: Task, run: RunResult) -> dict:
         "Generated Outputs": outcome(run),
         "Feedback": f"{verdict}. Verifier: {run.verify_detail}\nSteps:\n{steps_summary(run)}",
     }
+
+
+class _ReflectionGuard:
+    """gepa 0.1.4 logs and swallows reflection-LM exceptions and would finish with the unchanged seed prompt.
+    This wrapper keeps the first exception, and `stop` (a gepa stop callback) ends the run so it can be raised."""
+
+    def __init__(self, lm: ReflectionLM):
+        self.lm = lm
+        self.error: Exception | None = None
+
+    def __call__(self, prompt: str | list[dict]) -> str:
+        try:
+            return self.lm(prompt)
+        except Exception as e:
+            self.error = self.error or e
+            raise
+
+    def stop(self, _state: object) -> bool:
+        return self.error is not None
 
 
 class _GepaLog:
@@ -146,7 +174,7 @@ def gepa_sets(
     pool = [tid for (tid,) in rows if tid not in variant_ids]
     need = GEPA_TRAIN_EXTRA + GEPA_VAL_SIZE
     if len(pool) < need:
-        raise RuntimeError(f"train pool has {len(pool)} tasks; GEPA needs {need}")
+        raise StateConflictError(f"train pool has {len(pool)} usable tasks; GEPA needs {need}")
     drawn = random.Random(f"gepa:{req.seed}:{req.generation}").sample(pool, need)
     tasks = load_tasks(conn, drawn)
     trainset = variants + [tasks[tid] for tid in drawn[:GEPA_TRAIN_EXTRA]]
@@ -165,8 +193,8 @@ def learn_c(
     if req.arm != "C":
         raise InvalidRequestError(f"/learn/C needs arm C, got {req.arm}")
     version = f"C-s{req.seed}-g{req.generation}"
-    if get_prompt_version(conn, version) is not None:
-        return LearnResult(prompt_version=version, notes="already learned; existing prompt version returned")
+    if (done := learned_result(conn, version, req)) is not None:
+        return done
 
     seed_text = prompt_text(conn, req.current_prompt_version, system_v1)
     failures = load_included_failures(conn, req.failure_ids)
@@ -175,16 +203,20 @@ def learn_c(
     assert_train_only([t.task_id for t in trainset + valset], conn)
 
     adapter = AgentPromptAdapter(conn, agent, req)
+    guard = _ReflectionGuard(reflection_lm)
     result = gepa.optimize(
         seed_candidate={COMPONENT: seed_text},
         trainset=trainset,
         valset=valset,
         adapter=adapter,
-        reflection_lm=reflection_lm,
+        reflection_lm=guard,
         max_metric_calls=GEPA_MAX_METRIC_CALLS,
+        stop_callbacks=guard.stop,
         seed=req.seed,
         logger=_GepaLog(),
     )
+    if guard.error is not None:
+        raise guard.error
     best = result.best_candidate
     assert isinstance(best, dict)
     stored = store_prompt_version(
@@ -203,7 +235,8 @@ def learn_c(
     scores = result.val_aggregate_scores
     notes = (
         f"GEPA: {len(result.candidates)} candidates, best valset score {scores[result.best_idx]:.3f}"
-        f" (seed prompt {scores[0]:.3f}); {adapter.agent_runs} agent runs;"
+        f" (seed prompt {scores[0]:.3f}); {adapter.agent_runs} agent runs"
+        f" ({adapter.infra_failures} ended in model_error, tool_error or timeout);"
         f" trainset {len(trainset)} ({len(trainset) - GEPA_TRAIN_EXTRA} variants), valset {len(valset)}"
     )
     return LearnResult(prompt_version=stored.prompt_version, notes=notes)

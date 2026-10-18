@@ -9,7 +9,7 @@ from typing import Annotated
 import psycopg
 from fastapi import APIRouter, Depends
 from scar_experiments.clients import AgentClient, EnvClient, ReflectionLM, openai_reflection_lm
-from scar_experiments.errors import DependencyError, InvalidRequestError, NotFoundError
+from scar_experiments.errors import DependencyError, InvalidRequestError, NotFoundError, StateConflictError
 from scar_experiments.learn_b import learn_b
 from scar_experiments.learn_c import learn_c
 from scar_experiments.prompts import read_system_v1
@@ -58,7 +58,8 @@ EnvDep = Annotated[EnvClient, Depends(get_env_client)]
 @contextmanager
 def _learn_conn(db: Database) -> Iterator[psycopg.Connection]:
     """A dedicated autocommit connection, so a learn-step that runs for minutes commits each lesson and candidate as
-    it goes instead of holding a pooled connection in one long transaction. Maps learn-step errors to SPEC 7.4."""
+    it goes instead of holding a pooled connection in one long transaction. Maps learn-step errors to SPEC 7.4
+    bodies; any other RuntimeError (such as the eval-leakage guard) becomes a 500 with the same body."""
     try:
         with psycopg.connect(db.url, autocommit=True) as conn:
             yield conn
@@ -66,8 +67,14 @@ def _learn_conn(db: Database) -> Iterator[psycopg.Connection]:
         raise ApiError(404, "not_found", str(e)) from e
     except InvalidRequestError as e:
         raise ApiError(422, "invalid_input", str(e)) from e
+    except StateConflictError as e:
+        raise ApiError(409, "conflict", str(e)) from e
     except DependencyError as e:
         raise ApiError(503, "dependency_unavailable", str(e)) from e
+    except psycopg.OperationalError as e:
+        raise ApiError(503, "database_unavailable", str(e)) from e
+    except RuntimeError as e:
+        raise ApiError(500, "internal_error", str(e)) from e
 
 
 @router.post("/learn/B")

@@ -6,7 +6,7 @@ import pytest
 from scar_schemas.constants import GEPA_MAX_METRIC_CALLS, GEPA_TRAIN_EXTRA, GEPA_VAL_SIZE, VARIANTS_PER_FAILURE
 from scar_schemas.models import LearnRequest, MutateRequest, PromptVersion
 
-from scar_experiments.errors import NotFoundError
+from scar_experiments.errors import DependencyError, NotFoundError, StateConflictError
 from scar_experiments.learn_c import AgentPromptAdapter, gepa_sets, learn_c
 from scar_experiments.prompts import candidate_version_id, get_prompt_version, store_prompt_version
 
@@ -216,3 +216,74 @@ def test_seed_candidate_is_the_current_prompt_version(conn):
 
     with pytest.raises(NotFoundError, match="unknown prompt version: C-s0-g9"):
         learn_c(conn, _req(failures, generation=3, current="C-s0-g9"), _hinting_lm(), agent, FakeEnv(conn), "")
+
+
+def _ready(conn, n_failures=1):
+    failures = [add_failure(conn, arm="C") for _ in range(n_failures)]
+    insert_pool(conn, GEPA_TRAIN_EXTRA + GEPA_VAL_SIZE)
+    return failures
+
+
+def _count(conn, sql):
+    return conn.execute(sql).fetchone()[0]
+
+
+def test_reflection_lm_failure_is_raised_not_stored(conn):
+    """gepa swallows reflection errors; without the guard the seed prompt would be stored and cached as C-s0-g1."""
+    failures = _ready(conn)
+
+    def down(prompt):
+        raise DependencyError("reflection LM call failed: connection refused")
+
+    agent = FakeAgent(conn, passes=lambda *_: False)
+    with pytest.raises(DependencyError, match="connection refused"):
+        learn_c(conn, _req(failures), FakeLM(down), agent, FakeEnv(conn), SYSTEM_V1)
+    assert get_prompt_version(conn, "C-s0-g1") is None
+    # It stops at the first failed reflection: the seed valset plus one parent minibatch.
+    assert len(agent.requests) == GEPA_VAL_SIZE + 3
+
+
+def test_model_endpoint_outage_is_raised_not_stored(conn):
+    """The real agent reports a dead model endpoint as runs with stop_reason model_error, not as an HTTP error."""
+    failures = _ready(conn)
+    agent = FakeAgent(conn, passes=lambda *_: True, stop_reason=lambda _: "model_error")
+    with pytest.raises(DependencyError, match="all 50 agent runs in a GEPA batch ended in model_error"):
+        learn_c(conn, _req(failures), _hinting_lm(), agent, FakeEnv(conn), SYSTEM_V1)
+    assert get_prompt_version(conn, "C-s0-g1") is None
+
+
+def test_sporadic_infrastructure_failures_score_zero_and_are_reported(conn):
+    failures = _ready(conn)
+    pool = [tid for (tid,) in conn.execute("SELECT task_id FROM app.train_pool ORDER BY position").fetchall()]
+    flaky = set(pool[::10])
+    agent = FakeAgent(
+        conn,
+        passes=lambda text, _: HINT in text,
+        stop_reason=lambda t: "timeout" if t.task_id in flaky else "submitted",
+    )
+    result = learn_c(conn, _req(failures), _hinting_lm(), agent, FakeEnv(conn), SYSTEM_V1)
+    infra = sum(r.task_id in flaky for r in agent.requests)
+    assert infra > 0 and f"({infra} ended in model_error, tool_error or timeout)" in result.notes
+    assert HINT in get_prompt_version(conn, "C-s0-g1").text
+
+
+def test_conflicting_recall_and_missing_pool_are_state_conflicts(conn):
+    failures = [add_failure(conn, arm="C")]
+    insert_pool(conn, GEPA_TRAIN_EXTRA + GEPA_VAL_SIZE - 1)
+    with pytest.raises(StateConflictError, match="train pool has 99 usable tasks; GEPA needs 100"):
+        learn_c(conn, _req(failures), _hinting_lm(), FakeAgent(conn, lambda *_: True), FakeEnv(conn), SYSTEM_V1)
+
+    store_prompt_version(
+        conn,
+        PromptVersion(
+            prompt_version="C-s0-g1",
+            arm="C",
+            seed=0,
+            generation=1,
+            text="x",
+            parent_prompt_version="system_v1",
+            created_at=NOW,
+        ),
+    )
+    with pytest.raises(StateConflictError, match="C-s0-g1 was learned from system_v1, not C-s0-g0"):
+        learn_c(conn, _req(failures, current="C-s0-g0"), _hinting_lm(), None, None, SYSTEM_V1)

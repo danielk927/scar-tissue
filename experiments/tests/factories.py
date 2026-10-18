@@ -80,7 +80,10 @@ def make_run(
     generation: int = 1,
     purpose: str = "traffic",
     temperature: float = 0.0,
+    stop_reason: str = "submitted",
 ) -> RunResult:
+    """A run that submitted 7500 (pass) or 7600 (fail), or ended early with `stop_reason` (fail)."""
+    passed = passed and stop_reason == "submitted"
     answer = 7500 if passed else 7600
     return RunResult(
         run_id=new_id("run"),
@@ -113,7 +116,7 @@ def make_run(
             ChatMessage(role="tool", tool_call_id="c2", name="submit_answer", content='{"ok":true}'),
         ],
         final_answer={"number": answer},
-        stop_reason="submitted",
+        stop_reason=stop_reason,
         passed=passed,
         verify_detail=f"number: expected 7500.00, got {answer}",
         steps=2,
@@ -200,12 +203,19 @@ class FakeLM:
 
 
 class FakeAgent:
-    """Agent client fake: a run passes when `passes(prompt_text, task)`. The prompt version must already be stored,
-    as the real agent loads it from app.prompt_versions."""
+    """Agent client fake: a run passes when `passes(prompt_text, task)` and ends with `stop_reason(task)`
+    ("submitted" by default). The prompt version must already be stored, as the real agent loads it from
+    app.prompt_versions."""
 
-    def __init__(self, conn: psycopg.Connection, passes: Callable[[str, Task], bool]):
+    def __init__(
+        self,
+        conn: psycopg.Connection,
+        passes: Callable[[str, Task], bool],
+        stop_reason: Callable[[Task], str] = lambda _: "submitted",
+    ):
         self.conn = conn
         self.passes = passes
+        self.stop_reason = stop_reason
         self.batches: list[RunBatchRequest] = []
 
     @property
@@ -231,6 +241,7 @@ class FakeAgent:
                     generation=r.generation,
                     purpose=r.purpose,
                     temperature=r.temperature,
+                    stop_reason=self.stop_reason(task),
                 )
             )
         return runs

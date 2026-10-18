@@ -3,8 +3,9 @@
 Run: uv run python -m scar_experiments.report [--database-url URL] [--out docs/RESULTS.md] [--png docs/results.png]
 
 The score of an arm at generation g is the eval score of the model and prompt that are current after g: a promoted
-candidate's eval_score, a rejected candidate's parent_eval_score. Generation 0 is the shared base score, and arm A
-(frozen base) is generation 0 repeated. Re-running on the same data writes byte-identical files.
+candidate's eval_score; after a rejected or failed generation the parent stays current, so its parent_eval_score.
+Generation 0 is the shared base score, and arm A (frozen base) is generation 0 repeated. Re-running on the same data
+writes byte-identical files.
 """
 
 import argparse
@@ -57,21 +58,21 @@ def base_score(records: list[GenerationRecord]) -> float:
 
 
 def summarize(records: list[GenerationRecord]) -> tuple[list[Cell], int]:
-    """Cells sorted by arm then generation, and the number of unfinished records left out."""
+    """Cells sorted by arm then generation, and the number of records left out (in progress or without a score)."""
     base = base_score(records)
     series: dict[tuple[str, int], dict[int, float]] = {}
-    unfinished = 0
+    left_out = 0
     for r in records:
         if r.arm == "A" or r.generation == 0:
             continue
         if r.status == GenStatus.promoted:
             score = r.eval_score
-        elif r.status == GenStatus.rejected:
+        elif r.status in (GenStatus.rejected, GenStatus.failed):
             score = r.parent_eval_score
         else:
             score = None
         if score is None:
-            unfinished += 1
+            left_out += 1
             continue
         series.setdefault((r.arm, r.seed), {0: base})[r.generation] = score
     last = max((g for s in series.values() for g in s), default=0)
@@ -83,14 +84,14 @@ def summarize(records: list[GenerationRecord]) -> tuple[list[Cell], int]:
         for g in sorted({g for s in lineages for g in s}):
             values = [s[g] for s in lineages if g in s]
             cells.append(Cell(arm, g, fmean(values), min(values), max(values), len(values)))
-    return cells, unfinished
+    return cells, left_out
 
 
 def _pct(x: float) -> str:
     return f"{100 * x:.1f}%"
 
 
-def render_markdown(cells: list[Cell], unfinished: int, png_link: str) -> str:
+def render_markdown(cells: list[Cell], left_out: int, png_link: str) -> str:
     lines = [
         "# Results",
         "",
@@ -98,7 +99,8 @@ def render_markdown(cells: list[Cell], unfinished: int, png_link: str) -> str:
         "",
         "Eval success rate on `eval_v1` (tasks from held-out companies) of the model and prompt that are current"
         " after each generation.",
-        "A promoted candidate counts with its own score; after a rejection the parent's score carries forward.",
+        "A promoted candidate counts with its own score; after a rejected or failed generation the parent's score"
+        " carries forward.",
         "Generation 0 is the shared base score, and arm A (frozen base) stays at it.",
         "Mean, min and max are over seeds; n is the number of seeds.",
         "",
@@ -110,8 +112,8 @@ def render_markdown(cells: list[Cell], unfinished: int, png_link: str) -> str:
     for c in cells:
         stats = " | ".join(_pct(x) for x in (c.mean, c.min, c.max))
         lines.append(f"| {c.arm} - {ARM_NAMES[c.arm]} | {c.generation} | {stats} | {c.n} |")
-    if unfinished:
-        lines += ["", f"Unfinished generation records left out (neither promoted nor rejected): {unfinished}."]
+    if left_out:
+        lines += ["", f"Generation records left out (still in progress, or without the score they need): {left_out}."]
     return "\n".join(lines) + "\n"
 
 
@@ -232,13 +234,13 @@ def main(argv: list[str] | None = None) -> None:
     with psycopg.connect(args.database_url) as conn:
         records = load_records(conn)
     try:
-        cells, unfinished = summarize(records)
+        cells, left_out = summarize(records)
     except ValueError as e:
         raise SystemExit(f"error: {e}") from e
     for path in (args.out, args.png):
         path.parent.mkdir(parents=True, exist_ok=True)
     png_link = Path(os.path.relpath(args.png.resolve(), args.out.resolve().parent)).as_posix()
-    args.out.write_text(render_markdown(cells, unfinished, png_link))
+    args.out.write_text(render_markdown(cells, left_out, png_link))
     write_chart(cells, args.png)
     print(f"wrote {args.out} and {args.png}")
 

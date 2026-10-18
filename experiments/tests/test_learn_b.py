@@ -2,7 +2,7 @@ import pytest
 from scar_schemas.constants import MEMORY_MAX_LESSONS
 from scar_schemas.models import LearnRequest
 
-from scar_experiments.errors import InvalidRequestError, NotFoundError
+from scar_experiments.errors import InvalidRequestError, NotFoundError, StateConflictError
 from scar_experiments.learn_b import (
     LESSON_MAX_WORDS,
     PROMPT_MAX_TOKENS,
@@ -76,6 +76,9 @@ def test_learn_b_is_idempotent(conn):
     assert again.prompt_version == first.prompt_version
     assert again_lm.prompts == []
     assert conn.execute("SELECT count(*) FROM app.prompt_versions").fetchone()[0] == 1
+    # The same ID learned from another parent is a conflict, not a silent reuse.
+    with pytest.raises(StateConflictError, match="B-s0-g1 was learned from system_v1, not B-s0-g0"):
+        learn_b(conn, _req(failures, current="B-s0-g0"), again_lm, SYSTEM_V1)
 
 
 def test_existing_lesson_is_reused_not_regenerated(conn):

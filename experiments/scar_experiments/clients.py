@@ -24,9 +24,8 @@ def _post(url: str, body: BaseModel, timeout: float) -> Any:
         response = httpx.post(url, json=body.model_dump(mode="json"), timeout=timeout)
     except httpx.TransportError as e:
         raise DependencyError(f"POST {url} failed: {e!r}") from e
-    if response.status_code >= 500:
+    if not response.is_success:
         raise DependencyError(f"POST {url} returned HTTP {response.status_code}: {response.text[:300]}")
-    response.raise_for_status()
     return response.json()
 
 
