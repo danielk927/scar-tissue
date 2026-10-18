@@ -33,6 +33,8 @@ packages = ["scar_train"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# typer 0.25 (pinned below 0.26 by veri-sdk 0.2.44) imports click helpers that click 8.5 deprecates
+filterwarnings = ["ignore::DeprecationWarning:typer"]
 
 [tool.ruff]
 line-length = 120

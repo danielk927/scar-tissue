@@ -111,8 +111,9 @@ def default_context(settings: Settings | None = None) -> LoopContext:
         log.warning("TRAINER=fake: arm-D candidates serve the base weights; for tests and tiny smoke runs only")
         trainer, deployer = FakeTrainer(), FakeDeployer()
     elif backend == "veri":
-        # Hook for P3-08: build the Veri trainer and deployer (trainer.py protocols) here.
-        raise NotImplementedError("TRAINER=veri: the Veri backend (P3-08) does not exist yet")
+        from . import veri  # imported only when selected: it loads the Veri SDK
+
+        trainer, deployer = veri.make_backends(settings)
     else:
         raise ValueError(f"unknown TRAINER={backend!r}; use fake or veri")
     return LoopContext(

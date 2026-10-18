@@ -11,7 +11,7 @@ from scar_schemas.models import ChatMessage, ToolCall
 from scar_schemas.openai_format import load_tools, to_openai_messages
 from veri_sdk.client import VeriRequestError, VeriServerError
 
-from scar_train import veri
+from scar_train import loop, veri
 from scar_train.config import REPO_ROOT
 from scar_train.trainer import Deployment, TrainedAdapter
 
@@ -31,7 +31,9 @@ def transcript() -> list[dict]:
     """A real-shaped passed run: 3 assistant turns, compact dumps_args arguments, a non-ASCII vendor name."""
     calls = [
         ToolCall(id="c1", name="get_vendors", arguments={"name_contains": "Café"}),
-        ToolCall(id="c2", name="get_transactions", arguments={"vendor_id": "co-1:vend-cafe", "start_date": "2026-05-01"}),
+        ToolCall(
+            id="c2", name="get_transactions", arguments={"vendor_id": "co-1:vend-cafe", "start_date": "2026-05-01"}
+        ),
         ToolCall(id="c3", name="submit_answer", arguments={"number": 12.5}),
     ]
     msgs = [
@@ -261,9 +263,13 @@ def test_veri_rows_keeps_raw_arguments():
     msgs = to_openai_messages(
         [
             ChatMessage(role="user", content="q"),
-            ChatMessage(role="assistant", tool_calls=[ToolCall(id="a", name="sql_query", arguments={"__raw__": "{bad"})]),
+            ChatMessage(
+                role="assistant", tool_calls=[ToolCall(id="a", name="sql_query", arguments={"__raw__": "{bad"})]
+            ),
             ChatMessage(role="tool", tool_call_id="a", name="sql_query", content="error"),
-            ChatMessage(role="assistant", tool_calls=[ToolCall(id="b", name="sql_query", arguments={"__raw__": "[1,2]"})]),
+            ChatMessage(
+                role="assistant", tool_calls=[ToolCall(id="b", name="sql_query", arguments={"__raw__": "[1,2]"})]
+            ),
         ]
     )
     rows = veri.veri_rows(spec_line(msgs))
@@ -295,8 +301,8 @@ def test_trainer_uploads_trains_and_saves_the_adapter(tmp_path, caplog):
 
     assert adapter == TrainedAdapter(adapter_uri="mdl_1", training_job_id="job_1")
     assert fake.names() == [
-        "datasets.upload",
         "training_jobs.list",
+        "datasets.upload",
         "training_jobs.create",
         "training_jobs.get",
         "training_jobs.get",
@@ -347,12 +353,30 @@ def test_trainer_warns_when_the_job_echo_drops_a_hyperparameter(tmp_path, caplog
     assert "echoes lora_dropout=None, requested 0.05" in caplog.text
 
 
-def test_trainer_reuses_a_job_for_the_same_version_and_dataset(tmp_path):
-    fake = FakeVeri(job_statuses=("completed",))
-    fake.jobs = [fake._job("running")]
+@pytest.mark.parametrize("status", ["running", "completed"])
+def test_trainer_reuses_a_completed_or_running_job_of_the_version(tmp_path, status):
+    """The loop re-runs an interrupted training step: no new upload or job, the same adapter."""
+    fake = FakeVeri(job_statuses=(status, "completed"))
+    other = SimpleNamespace(**vars(fake._job("completed")) | {"id": "job_other", "output_name": "D-s0-g2"})
+    fake.jobs = [other, fake._job(status)]
     adapter = train(make_trainer(fake), tmp_path)
+    assert adapter == TrainedAdapter(adapter_uri="mdl_1", training_job_id="job_1")
+    assert "datasets.upload" not in fake.names() and "training_jobs.create" not in fake.names()
+    assert fake.call("training_jobs.list")[1] == {"limit": 100, "method": "sft_text"}
+
+
+def test_trainer_prefers_the_completed_job_and_retrains_after_a_failure(tmp_path):
+    fake = FakeVeri(job_statuses=("completed",))
+    failed, done = fake._job("failed"), fake._job("completed")
+    failed.id = "job_failed"
+    fake.jobs = [failed, done]
+    assert train(make_trainer(fake), tmp_path).training_job_id == "job_1"
     assert "training_jobs.create" not in fake.names()
-    assert adapter.training_job_id == "job_1"
+
+    fake = FakeVeri()
+    fake.jobs = [fake._job("failed"), fake._job("cancelled")]
+    train(make_trainer(fake), tmp_path)
+    assert fake.names()[:3] == ["training_jobs.list", "datasets.upload", "training_jobs.create"]
 
 
 def test_trainer_raises_when_the_job_fails(tmp_path):
@@ -362,7 +386,7 @@ def test_trainer_raises_when_the_job_fails(tmp_path):
     assert not any(n.startswith("models.") for n in fake.names())
 
 
-def test_trainer_cancels_the_job_on_timeout_and_interrupt(tmp_path):
+def test_trainer_cancels_a_timed_out_job_but_keeps_an_interrupted_one(tmp_path, caplog):
     fake = FakeVeri(job_statuses=("running",))
     with pytest.raises(veri.VeriTimeout):
         train(make_trainer(fake, poll_s=10, timeout_s=30), tmp_path)
@@ -370,9 +394,10 @@ def test_trainer_cancels_the_job_on_timeout_and_interrupt(tmp_path):
     assert fake.call("training_jobs.cancel")[0] == ("job_1",)
 
     fake = FakeVeri(job_statuses=(KeyboardInterrupt(),))
-    with pytest.raises(KeyboardInterrupt):
+    with caplog.at_level(logging.WARNING, logger="scar_train.veri"), pytest.raises(KeyboardInterrupt):
         train(make_trainer(fake), tmp_path)
-    assert "training_jobs.cancel" in fake.names()
+    assert "training_jobs.cancel" not in fake.names()  # the re-run reuses it
+    assert "veri jobs cancel job_1" in caplog.text
 
 
 def test_trainer_retries_transient_poll_errors(tmp_path):
@@ -383,7 +408,9 @@ def test_trainer_retries_transient_poll_errors(tmp_path):
 def test_trainer_reports_api_errors_with_context(tmp_path):
     error = VeriRequestError("invalid hyperparameters", code="invalid_hyperparameters")
     fake = FakeVeri(create_error=error)
-    with pytest.raises(veri.VeriBackendError, match=r"creating the training job for D-s0-g1: .*invalid_hyperparameters"):
+    with pytest.raises(
+        veri.VeriBackendError, match=r"creating the training job for D-s0-g1: .*invalid_hyperparameters"
+    ):
         train(make_trainer(fake), tmp_path)
 
 
@@ -393,7 +420,7 @@ def test_trainer_refuses_an_empty_dataset(tmp_path):
     trainer.tokenizer_loader = lambda _: FakeTokenizer(per_message=10_000)
     with pytest.raises(veri.VeriBackendError, match="no training rows"):
         train(trainer, tmp_path)
-    assert fake.calls == []
+    assert fake.names() == ["training_jobs.list"]
 
 
 # ---------- VeriDeployer ----------
@@ -411,10 +438,16 @@ def test_deployer_wakes_attaches_and_waits_until_active():
 
 
 def test_deployer_reuses_an_identical_attachment_and_refuses_a_different_one():
-    fake = FakeVeri(attachments=[{"serve_name": VERSION, "model_id": "mdl_1", "status": "active"}])
+    """The loop re-runs an interrupted deploying step: the attachment made before (maybe still loading) is accepted."""
+    fake = FakeVeri(
+        attachments=[{"serve_name": VERSION, "model_id": "mdl_1"}],
+        adapter_statuses=("attaching", "attaching", "active"),
+    )
     adapter = TrainedAdapter("mdl_1", "job_1")
-    make_deployer(fake).deploy(version=VERSION, adapter=adapter, base=model_version())
+    dep = make_deployer(fake).deploy(version=VERSION, adapter=adapter, base=model_version())
+    assert dep == Deployment(endpoint_base_url=DEP_URL, endpoint_model_id=VERSION)
     assert "deployments.attach_adapter" not in fake.names()
+    assert fake.names().count("deployments.adapters") == 3
 
     fake = FakeVeri(attachments=[{"serve_name": VERSION, "model_id": "mdl_other", "status": "active"}])
     with pytest.raises(veri.VeriBackendError, match="already attached"):
@@ -425,7 +458,9 @@ def test_deployer_attach_timeout_and_load_failure():
     adapter = TrainedAdapter("mdl_1", "job_1")
     fake = FakeVeri(adapter_statuses=("attaching",))
     with pytest.raises(veri.VeriTimeout, match="D-s0-g1 to become active"):
-        make_deployer(fake, poll_s=5, attach_timeout_s=20).deploy(version=VERSION, adapter=adapter, base=model_version())
+        make_deployer(fake, poll_s=5, attach_timeout_s=20).deploy(
+            version=VERSION, adapter=adapter, base=model_version()
+        )
     assert fake.names().count("deployments.adapters") == 1 + 4
 
     failed = [{"replica_id": "rep_1", "state": "failed", "error": "rank 32 > max_lora_rank"}]
@@ -461,8 +496,20 @@ def test_make_backends_reads_the_environment(monkeypatch):
     assert (trainer.gpu_type, trainer.provider) == ("L4-24GB", "aws")
 
     monkeypatch.delenv("VERI_DEPLOYMENT_ID")
-    with pytest.raises(veri.VeriBackendError, match="VERI_DEPLOYMENT_ID"):
+    with pytest.raises(ValueError, match="VERI_DEPLOYMENT_ID"):  # VeriConfigError: the /loop routes answer 503
         veri.make_backends(None)
+
+
+def test_loop_hook_builds_the_veri_backends(monkeypatch, tmp_path):
+    fake = FakeVeri()
+    monkeypatch.setattr(veri, "make_client", lambda: fake)
+    monkeypatch.setenv("TRAINER", "veri")
+    monkeypatch.setenv("VERI_DEPLOYMENT_ID", "dep_1")
+    monkeypatch.setenv("LOOP_RUN_DIR", str(tmp_path))
+    ctx = loop.default_context()
+    assert isinstance(ctx.trainer, veri.VeriTrainer) and isinstance(ctx.deployer, veri.VeriDeployer)
+    assert ctx.trainer.client is fake and ctx.deployer.client is fake
+    assert ctx.deployer.base_url == DEP_URL
 
 
 def test_create_base_creates_a_scale_to_zero_multi_adapter_deployment():

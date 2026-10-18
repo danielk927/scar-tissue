@@ -5,10 +5,13 @@ Per candidate version (for example D-s0-g1):
 1. veri_rows / convert_dataset turn each SPEC 9.8 export line into one prompt/completion row per assistant turn (the
    SPEC 9.8 Veri export). Rows longer than max_seq_length tokens, counted exactly with the base model's tokenizer and
    chat template with the tools, are dropped, so truncation never cuts a completion.
-2. VeriTrainer uploads the rows, runs a managed sft_text LoRA job, waits for it, and saves the adapter as a library
-   model (artifact="adapter"). TrainedAdapter.adapter_uri is that library model id, which is what attach needs.
-3. VeriDeployer wakes the deployment if it is parked, attaches the model under serve_name=version, waits until the
-   attachment is active, and returns the deployment's OpenAI-compatible base URL with endpoint_model_id=version.
+2. VeriTrainer uploads the rows, runs a managed sft_text LoRA job (output_name = version), waits for it, and saves the
+   adapter as a library model (artifact="adapter"). TrainedAdapter.adapter_uri is that library model id, which is what
+   attach needs. It is idempotent per version: a completed or in-flight job of that version is reused, so a re-run
+   (an interrupted loop step, or smoke run twice) never pays twice; a new job starts only after a failed one.
+3. VeriDeployer wakes the deployment if it is parked, attaches the model under serve_name=version (an attachment of
+   the same model under that name is accepted as is), waits until it is active, and returns the deployment's
+   OpenAI-compatible base URL with endpoint_model_id=version.
 
 CLI (run from train/; the repo-root .env is loaded):
     uv run python -m scar_train.veri whoami        # account, balance, burn rate: verifies VERI_API_KEY
@@ -97,6 +100,7 @@ MAX_LORA_RANK = DEFAULT_HYPERPARAMETERS["lora_rank"]
 MAX_LORAS = 8
 
 TRAIN_POLL_S = 30.0
+IN_FLIGHT_JOB_STATUSES = ("queued", "provisioning", "configuring", "running")  # the API's JobStatus enum
 TRAIN_TIMEOUT_S = 6 * 3600
 MODEL_POLL_S = 5.0
 MODEL_TIMEOUT_S = 600.0
@@ -117,6 +121,10 @@ class VeriBackendError(RuntimeError):
 
 class VeriTimeout(VeriBackendError):
     pass
+
+
+class VeriConfigError(VeriBackendError, ValueError):
+    """A required setting is missing (a ValueError, so the /loop routes answer 503 trainer_unavailable)."""
 
 
 # ---------- dataset conversion (SPEC 9.8 Veri export, docs/VERI.md 2.3) ----------
@@ -311,7 +319,30 @@ class VeriTrainer:
     def train(
         self, *, version: str, dataset_path: Path, n_examples: int, base_model_hf_id: str, seed: int
     ) -> TrainedAdapter:
+        """Idempotent per version (the loop re-runs an interrupted training step): a job whose output_name is version
+        is reused if it completed or is still in flight; a new job starts only if there is none or all failed."""
         ctx = {"model_version": version}
+        job = self._existing_job(version, base_model_hf_id)
+        if job is None:
+            job = self._submit(version, dataset_path, n_examples, base_model_hf_id, seed, ctx)
+        job = self._wait_job(job.id, ctx)
+        log.info(
+            "veri: training job %s completed: duration_seconds=%s cost_usd=%s gpu=%s provider=%s",
+            job.id,
+            job.duration_seconds,
+            job.cost_usd,
+            job.gpu,
+            job.provider,
+            extra=ctx,
+        )
+        model = self._save_adapter(job.id, version)
+        log.info("veri: adapter of job %s saved as model %s", job.id, model.id, extra=ctx)
+        return TrainedAdapter(adapter_uri=model.id, training_job_id=job.id)
+
+    def _submit(
+        self, version: str, dataset_path: Path, n_examples: int, base_model_hf_id: str, seed: int, ctx: dict
+    ) -> Any:
+        """Convert and upload the dataset, then create the sft_text job."""
         rows_path = dataset_path.with_name(f"{dataset_path.stem}.veri.jsonl")
         max_len = self.hyperparameters["max_seq_length"]
         stats = convert_dataset(
@@ -333,59 +364,42 @@ class VeriTrainer:
         with _veri_call(f"uploading {rows_path.name}"):
             ds = self.client.datasets.upload(str(rows_path), name=f"{version}-{digest}")  # same bytes, same id
         log.info("veri: dataset %s (%d rows)", ds.id, stats.rows, extra=ctx)
-
-        job = self._existing_job(version, base_model_hf_id, ds.id)
-        if job is None:
-            with _veri_call(f"creating the training job for {version}"):
-                job = self.client.training_jobs.create(
-                    base_model=base_model_hf_id,
-                    dataset_id=ds.id,
-                    output_name=version,
-                    method="sft_text",
-                    gpu_type=self.gpu_type,
-                    gpu_count=self.gpu_count,
-                    provider=self.provider,
-                    hyperparameters=self.hyperparameters,
-                )
-            log.info(
-                "veri: training job %s submitted (%s x%d on %s) %s",
-                job.id,
-                self.gpu_type,
-                self.gpu_count,
-                self.provider or "default provider",
-                job.dashboard_url or "",
-                extra=ctx,
+        with _veri_call(f"creating the training job for {version}"):
+            job = self.client.training_jobs.create(
+                base_model=base_model_hf_id,
+                dataset_id=ds.id,
+                output_name=version,
+                method="sft_text",
+                gpu_type=self.gpu_type,
+                gpu_count=self.gpu_count,
+                provider=self.provider,
+                hyperparameters=self.hyperparameters,
             )
-            self._check_echo(job)
-        job = self._wait_job(job.id, ctx)
         log.info(
-            "veri: training job %s completed: duration_seconds=%s cost_usd=%s gpu=%s provider=%s",
+            "veri: training job %s submitted (%s x%d on %s) %s",
             job.id,
-            job.duration_seconds,
-            job.cost_usd,
-            job.gpu,
-            job.provider,
+            self.gpu_type,
+            self.gpu_count,
+            self.provider or "default provider",
+            job.dashboard_url or "",
             extra=ctx,
         )
-        model = self._save_adapter(job.id, version)
-        log.info("veri: adapter of job %s saved as model %s", job.id, model.id, extra=ctx)
-        return TrainedAdapter(adapter_uri=model.id, training_job_id=job.id)
+        self._check_echo(job)
+        return job
 
-    def _existing_job(self, version: str, base_model_hf_id: str, dataset_id: str) -> Any:
-        """A job for the same version, base model and dataset that is not failed or cancelled: a restarted loop
-        picks it up instead of paying for the same training twice."""
+    def _existing_job(self, version: str, base_model_hf_id: str) -> Any:
+        """The newest job named version (output_name) on this base model that completed, else one still in flight;
+        None if there is none or every one failed or was cancelled."""
         with _veri_call("listing training jobs"):
             jobs = self.client.training_jobs.list(limit=100, method="sft_text")
-        for job in jobs:
-            same_data = dataset_id in (job.dataset_id, (job.dataset_snapshot_id or "").split("@")[0])
-            if (
-                job.output_name == version
-                and job.base_model == base_model_hf_id
-                and same_data
-                and job.status not in ("failed", "cancelled")
-            ):
+        mine = [j for j in jobs if j.output_name == version and j.base_model == base_model_hf_id]
+        for wanted in (("completed",), IN_FLIGHT_JOB_STATUSES):
+            job = next((j for j in mine if j.status in wanted), None)
+            if job is not None:
                 log.info("veri: reusing training job %s (%s) for %s", job.id, job.status, version)
                 return job
+        if mine:
+            log.info("veri: earlier jobs for %s ended %s; starting a new one", version, [j.status for j in mine])
         return None
 
     def _check_echo(self, job: Any) -> None:
@@ -432,8 +446,16 @@ class VeriTrainer:
                     poll_s=self.poll_s,
                     sleep=self.sleep,
                 )
-        except (KeyboardInterrupt, VeriTimeout):
-            self._cancel(job_id)  # stop the GPU bill: nothing will use this job
+        except VeriTimeout:
+            self._cancel(job_id)  # stop the GPU bill: a job this late is stuck
+            raise
+        except KeyboardInterrupt:
+            log.warning(
+                "veri: interrupted; training job %s keeps running (and billing) and the next train() of this version"
+                " reuses it. Stop it with `veri jobs cancel %s`",
+                job_id,
+                job_id,
+            )
             raise
 
     def _cancel(self, job_id: str) -> None:
@@ -561,19 +583,19 @@ def make_client() -> Client:
     try:
         return Client()  # VERI_API_KEY (the repo-root .env is loaded by scar_train.config)
     except ValueError as e:
-        raise VeriBackendError("VERI_API_KEY is not set: add it to the repo-root .env") from e
+        raise VeriConfigError("VERI_API_KEY is not set: add it to the repo-root .env") from e
 
 
 def _require_env(name: str, what: str) -> str:
     value = os.environ.get(name)
     if not value:
-        raise VeriBackendError(f"{name} is not set ({what}); add it to the repo-root .env")
+        raise VeriConfigError(f"{name} is not set ({what}); add it to the repo-root .env")
     return value
 
 
 def _base_model_hf_id(settings: Settings) -> str:
     if not settings.base_model_hf_id:
-        raise VeriBackendError("BASE_MODEL_HF_ID is not set; D-04 is Qwen/Qwen3-4B-Instruct-2507")
+        raise VeriConfigError("BASE_MODEL_HF_ID is not set; D-04 is Qwen/Qwen3-4B-Instruct-2507")
     return settings.base_model_hf_id
 
 
@@ -642,6 +664,10 @@ def tool_call(
 # ---------- CLI ----------
 
 
+def _usd(amount: float | None) -> str:
+    return "unknown" if amount is None else f"${amount:.2f}"
+
+
 def whoami(client: Client, echo: Callable[[str], None] = print) -> None:
     with _veri_call("reading the account"):
         me = client.me()
@@ -650,9 +676,9 @@ def whoami(client: Client, echo: Callable[[str], None] = print) -> None:
     ws = me.get("workspace") or {}
     echo(f"account:   {me.get('email')}")
     echo(f"workspace: {ws.get('name')} ({ws.get('kind')}, {ws.get('id')})")
-    echo(f"balance:   ${balance.get('balance_usd')}")
+    echo(f"balance:   {_usd(balance.get('balance_usd'))}")
     echo(
-        f"burn rate: ${burn.get('burn_rate_usd_per_hour')}/hour, {len(burn.get('active_jobs') or [])} active jobs,"
+        f"burn rate: {_usd(burn.get('burn_rate_usd_per_hour'))}/hour, {len(burn.get('active_jobs') or [])} active jobs,"
         f" {len(burn.get('active_deployments') or [])} active deployments"
     )
 
@@ -684,7 +710,7 @@ def create_base(
             rate = client.cost.estimate(SERVE_GPU["gpu_type"], SERVE_GPU["gpu_count"], 60, provider=SERVE_PROVIDER)
         echo(
             f"Creating multi-adapter deployment {name}: {base_model_hf_id}, {SERVE_GPU['gpu_type']} x1 on"
-            f" {SERVE_PROVIDER}, about ${rate.get('estimated_cost_usd')}/hour while a replica is up,"
+            f" {SERVE_PROVIDER}, about {_usd(rate.get('estimated_cost_usd'))}/hour while a replica is up,"
             f" parks after {scale_to_zero_window_s}s idle."
         )
         dep = create_fleet(client, fleet_body(base_model_hf_id, name, scale_to_zero_window_s))
@@ -692,7 +718,7 @@ def create_base(
         echo("Ctrl+C stops waiting, not the deployment; it parks by itself once idle.")
     start = time.monotonic()
     dep = ensure_serving(client, dep.id, poll_s=poll_s, sleep=sleep)
-    echo(f"Serving after {time.monotonic() - start:.0f}s at ${dep.cost_per_hour_usd}/hour per replica.")
+    echo(f"Serving after {time.monotonic() - start:.0f}s at {_usd(dep.cost_per_hour_usd)}/hour per replica.")
 
     base_url = endpoint_base_url(client, dep.id)
     echo(f"Checking one tool call on the base alias {dep.name!r} with {api_key_name}.")
@@ -844,7 +870,10 @@ def smoke(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m scar_train.veri", description=__doc__.split("\n")[0])
+    parser = argparse.ArgumentParser(
+        prog="python -m scar_train.veri",
+        description="Veri backend: check the account, create or wake the deployment, run the P3-05 smoke test.",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("whoami", help="print the account, balance and burn rate")
     create = sub.add_parser("create-base", help="create the multi-adapter deployment of BASE_MODEL_HF_ID")

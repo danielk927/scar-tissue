@@ -117,5 +117,6 @@ def test_unknown_job_and_unavailable_trainer(client, conn, monkeypatch):
     assert client.get("/loop/status/job_nope").status_code == 404
     registry.put_model_version(conn, model_version())
     monkeypatch.setenv("TRAINER", "veri")
+    monkeypatch.delenv("VERI_DEPLOYMENT_ID", raising=False)  # misconfigured Veri backend
     r = post(client)
     assert (r.status_code, r.json()["error"]) == (503, "trainer_unavailable")

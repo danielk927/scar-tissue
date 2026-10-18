@@ -429,3 +429,86 @@ The test transcript was built with `ChatMessage`/`ToolCall` and converted with `
 | 5 | `Qwen/Qwen3.5-4B` tokenizer (transformers 4.56.2) | string arguments raise `TypeError`; dict arguments render the XML tool-call format; default generation prompt opens `<think>` |
 | 6 | Per-turn prompt/completion rows (2.3) through veri-runner and Arrow, tokenized with the Qwen3-2507 template | accepted (`prompt_completion`); prompt is a token prefix in every row; completion spans equal exp 4's assistant spans; respaced arguments render byte-identical to the dict render; absent `content` renders the same as `null` |
 | - | `train_sft.py` (2.4) on CPU with `trl-internal-testing/tiny-Qwen3ForCausalLM` | trained 2 steps, 115 of 1,137 tokens per example masked in, PEFT adapter with the 7 projection modules saved |
+
+## Backend (`train/scar_train/veri.py`, P3-05, P3-08)
+
+Added 2026-10-18.
+A Veri API key now exists (Personal workspace, $20.00 balance).
+Only free, read-only calls were made with it: no deployment, training job, dataset upload or anything else that bills.
+
+### What the module does
+
+- `veri_rows(line)` turns one SPEC 9.8 export line into one `{"prompt", "completion", "tools"}` row per assistant turn (2.3, amended SPEC 9.8).
+- `convert_dataset(spec_jsonl, out, max_seq_length=4096, tokenizer=None)` writes those rows and drops any row whose prompt plus completion is longer than `max_seq_length` tokens.
+  Tokens are counted the way TRL 1.7.1's `SFTTrainer` counts a prompt/completion row: the base model's chat template applied to prompt + completion with the row's tools (trl: trainer/sft_trainer.py `tokenize_fn`).
+  The tokenizer comes from `transformers==4.56.2` (the managed runtime's version) and downloads tokenizer files only.
+- `VeriTrainer` converts, uploads (`client.datasets.upload`), creates an `sft_text` job with the SPEC 9.8 LoRA hyperparameters (`output_name` = version), polls it, logs `duration_seconds` and `cost_usd`, and saves the adapter with `client.models.create_from_training_job(job_id, name=..., artifact="adapter")`.
+  `TrainedAdapter.adapter_uri` is the library model id, which is what `attach_adapter` takes.
+- `VeriTrainer.train` is idempotent per version: a completed or in-flight job with `output_name == version` is reused, and a new job starts only when every earlier one failed or was cancelled.
+  Ctrl+C leaves a running job alone (the loop's re-run reuses it); a job still unfinished after 6 hours is cancelled.
+- `VeriDeployer` wakes the deployment if it is parked, attaches the adapter with `serve_name` = version (an existing attachment of the same model is accepted), polls `client.deployments.adapters` until the attachment is `active`, and returns `endpoint_base_url = https://api.veri.studio/v1/deployments/{id}` with `endpoint_model_id` = version.
+- `make_backends(settings)` builds both for `TRAINER=veri`; `loop.default_context` calls it.
+- CLI: `whoami`, `create-base`, `wake`, `smoke` (`uv run python -m scar_train.veri <command>` from `train/`).
+
+### Verified live (read-only calls, 2026-10-18)
+
+- `client.me()` returns the workspace (`Personal`, kind `personal`); `client.billing.balance()` returns `balance_usd` 20.0; `client.billing.burn_rate()` returns 0 active jobs and deployments.
+- `training_jobs.list(limit=100, method="sft_text")`, `deployments.list(limit=100)`, `models.list(limit=100)` and `datasets.list()` are accepted and return empty lists.
+- A missing deployment, training job or model is a `VeriNotFoundError` with no error code.
+- `client.cost.estimate("L4-24GB", 1, 60, provider="aws")` returns $1.05 per hour.
+- `client.gpu.catalog()` and `client.gpu.availability()`: training on `vast` H100-80GB at $2.32 per GPU-hour with 9 offers live (section 5's "about 3.36" is out of date), `vast` A100-80GB at $1.30, `aws` L4-24GB at $1.05 for training and serving, `digitalocean` H100 x1 unavailable at the time.
+
+### Verified from the public OpenAPI spec (https://api.veri.studio/openapi.json)
+
+- `DeploymentCreate` has `serving_mode` ("single" or "multi_adapter"), `max_loras` (default 32), `max_lora_rank` (default 64), `max_cpu_loras`, `min_replicas` (0 enables scale to zero), `max_replicas`, `scale_to_zero_window_seconds` (default 3600, minimum 300) and `vllm_extra_args`.
+- `POST /v1/deployments/{id}/adapters` takes `{"serve_name", "model_id"}`; the attachment's `status` is `attaching`, `active` or `detaching`, and `replicas[].state` is `downloading`, `loading`, `loaded`, `failed` or `missing`.
+- Training job statuses are `queued`, `provisioning`, `configuring`, `running`, `completed`, `failed`, `cancelled`; deployment statuses are `queued`, `provisioning`, `serving`, `stopped`, `failed`, `scaled_to_zero`, `waking`.
+- `SftTextHyperparameters` lists `learning_rate`, `num_epochs`, `max_steps`, `max_seq_length`, `lora_rank`, `lora_alpha` and others, but neither `lora_dropout` nor `seed`.
+  The schema is not exhaustive (the docs list `use_liger`, which it lacks), so this does not prove `lora_dropout` is dropped.
+- A multipart dataset upload whose bytes match an existing dataset returns that dataset (content addressing).
+
+### Verified offline with the real tokenizer
+
+The smoke's toy transcript (seed task `task_83320084664e4f77ace36dcdcbc86128`, 3 tool calls) converted with the `Qwen/Qwen3-4B-Instruct-2507` tokenizer gives 3 rows of 802, 907 and 1,000 tokens.
+In every row the prompt rendered with `add_generation_prompt=True` is a token prefix of prompt + completion, and each completion ends with `<|im_end|>`.
+The re-serialized argument strings render byte-identical to vLLM-style dict arguments.
+With `max_seq_length` one token below the longest row, exactly that row is dropped.
+
+### Still `TODO(VERIFY)` (needs a billed call)
+
+- That the control plane forwards `lora_dropout` to the runtime; `VeriTrainer` logs a warning when the job's echoed `hyperparameters` drop or change any requested value.
+- That the fleet's base alias is the deployment `name`; `create-base` sends one tool call with `model` = name and, if it fails, prints the server's error, which lists the valid names.
+- That `serving_mode: "multi_adapter"` is enabled for our workspace and accepts `vllm_extra_args`, `max_lora_rank` and `max_loras` together (all are documented fields).
+- Library model statuses other than `importing` and `ready` (SDK docstrings); `VeriTrainer` fails fast on `failed` and otherwise waits up to 10 minutes.
+- The dataset upload size limit.
+
+### Deployment settings chosen by `create-base`
+
+- 1x L4-24GB on `aws`, `source: "huggingface"`, `serving_mode: "multi_adapter"`, `min_replicas: 0`, `max_replicas: 1`.
+- `vllm_extra_args`: `--enable-auto-tool-choice --tool-call-parser hermes --max-model-len 40960`.
+  The model's native context (262,144 tokens) needs far more KV cache than an L4 has; 40,960 covers the longest agent run (12 turns of up to 1,024 tokens plus tool results of up to 6,000 characters).
+- `max_lora_rank: 16` (our LoRA rank) and `max_loras: 8`, because vLLM preallocates `max_loras` slots of `max_lora_rank` for every LoRA layer and the defaults (32 at rank 64) would take roughly 8 GB of the L4.
+- `scale_to_zero_window_seconds`: `VERI_SCALE_TO_ZERO_WINDOW_SECONDS`, default 900.
+
+### Scale to zero: the cold-start trade-off
+
+- A parked deployment costs nothing; a replica bills per minute from box launch until it parks or stops.
+- After the idle window with no requests the deployment parks; the next request gets 503 `deployment_waking` for a few minutes while a box boots, and that boot is billed.
+- The agent's OpenAI client does not wait minutes, so agent runs sent to a parked deployment end as `model_error`; run `uv run python -m scar_train.veri wake` before agent work after an idle period.
+- `VeriDeployer` wakes the deployment itself before attaching, so a park during a 30 to 40 minute training job costs one cold start instead of idle L4 time.
+- For a long session without idle gaps, `Client().deployments.update(<id>, min_replicas=1)` keeps it warm; set it back to 0 afterwards.
+
+### Commands, in order, once per environment
+
+```bash
+cd train
+uv run python -m scar_train.veri whoami         # account, balance, burn rate
+uv run python -m scar_train.veri create-base    # creates (or reuses by name) the deployment, waits, checks a tool call on base
+# add VERI_DEPLOYMENT_ID=<id> to the repo-root .env, and MODEL_API_KEY if create-base asks for it
+uv run python -m scar_train.register_base --endpoint-base-url https://api.veri.studio/v1/deployments/<id> --endpoint-model-id scar-base
+uv run python -m scar_train.veri smoke          # P3-05: base tool call, toy sft_text job (max_steps 2), attach D-smoke-g1, tool call
+```
+
+`smoke` prints the time to serving, the job's duration and cost, the attach time, both tool calls and the balance before and after; record them in section 5 and decide D-03.
+Running `smoke` again reuses the completed `D-smoke-g1` job and attachment, so it costs no new training.
+Then run the loop with `TRAINER=veri`; training defaults to 1x H100-80GB on `vast` (`VERI_TRAIN_GPU_TYPE`, `VERI_TRAIN_GPU_COUNT`, `VERI_TRAIN_PROVIDER` override it; L4-24GB on `aws` is the alternative).

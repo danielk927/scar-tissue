@@ -499,7 +499,9 @@ def test_default_context_picks_the_trainer_backend(monkeypatch, tmp_path):
     assert isinstance(ctx.trainer, FakeTrainer) and isinstance(ctx.deployer, FakeDeployer)
     assert ctx.run_dir == tmp_path and ctx.build_snapshot is data_builder.build_snapshot
     monkeypatch.setenv("TRAINER", "veri")
-    with pytest.raises(NotImplementedError, match="Veri"):
+    monkeypatch.setenv("VERI_API_KEY", "vk_test")
+    monkeypatch.delenv("VERI_DEPLOYMENT_ID", raising=False)
+    with pytest.raises(ValueError, match="VERI_DEPLOYMENT_ID"):  # the Veri backend itself: tests/test_veri.py
         loop.default_context()
     monkeypatch.setenv("TRAINER", "gpu")
     with pytest.raises(ValueError):
