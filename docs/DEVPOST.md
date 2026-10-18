@@ -12,7 +12,7 @@ An accounting agent that turns its own failures into training data and only ship
 - Main track: Model Learning.
 - Sentry: AI agent monitoring and tracing on every agent run, Sentry Logs from all three services, Session Replay on the judge UI.
 - Veri: every weight update is a Veri LoRA fine-tuning job, served from one Veri multi-adapter deployment.
-- QuickBooks: Jev (a System One model) triages every failed run in real time, and the agent works on the QuickBooks hackathon dataset.
+- QuickBooks: Jev (a System One model) triages every failed run from the loop's practice traffic and from judges' questions when a generation mines its failures, and the agent works on the QuickBooks hackathon dataset.
 
 ## Inspiration
 
