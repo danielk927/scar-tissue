@@ -147,7 +147,8 @@ def generate_tasks(
 ) -> list[Task]:
     """n tasks from `split` companies, interleaved by family (or only `family`). Within a family, slot k has
     difficulty 1 + k % 3 and uses the templates supporting that difficulty in turn; companies are spread evenly by a
-    seeded shuffle, and a slot whose company cannot support it moves on to the next company, then the next template."""
+    seeded shuffle. A slot whose company cannot support it tries the other companies in a seeded random order (so the
+    extra load spreads over the companies that can), then the next template."""
     families = [family] if family else list(TaskFamily)
     companies = [
         cid
@@ -180,10 +181,12 @@ def _generate_slot(
 ) -> Task:
     difficulty = 1 + k % 3
     templates = [t for t in TEMPLATES.values() if t.family == family and difficulty in t.difficulties]
-    r, c = (k // 3) % len(templates), companies.index(company_id)
+    r = (k // 3) % len(templates)
     rng = random.Random(f"{seed}:{family.value}:{k}")
+    fallbacks = [cid for cid in companies if cid != company_id]
+    rng.shuffle(fallbacks)
     for template in templates[r:] + templates[:r]:
-        for cid in companies[c:] + companies[:c]:
+        for cid in [company_id, *fallbacks]:
             task = sample_task(conn, template.template_id, cid, rng=rng, difficulty=difficulty, origin=origin)
             if task is not None:
                 return task
