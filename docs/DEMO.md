@@ -103,3 +103,58 @@ Optional, if time allows: the replay player paused on the `/ask` result card (`s
 Notes for the team: rehearse twice before 08:00 PDT; time the 1:00–2:30 segment with a real judge-style question; decide who clicks and who talks.
 
 ## Person 3: demo generation procedure
+
+### Prepare on the experiment host
+
+The real experiment database and model credentials belong on the host running the three backend services.
+Set `TRAINER=veri`, `VERI_API_KEY`, `VERI_DEPLOYMENT_ID` and `MODEL_API_KEY` in that host's repo-root `.env`, then restart the train service.
+Keep its database and `LOOP_RUN_DIR` between restarts; those hold the generation's resumable steps.
+From `train/`:
+
+```bash
+uv run python -m scar_train.veri wake
+uv run python -m scar_train.campaign --preflight
+uv run python -m scar_train.campaign --demo --plan-only
+```
+
+`wake` uses the existing multi-adapter deployment; it does not create another GPU deployment.
+The team measured roughly 15 minutes for a cold start, so wake it before judges arrive.
+The current base and adapters share this one deployment. To keep the latest D-s0 endpoint warm, leave this in a second terminal during the demo window:
+
+```bash
+uv run python -m scar_train.keep_warm --minutes 120
+```
+
+It resolves the currently promoted D-s0 version on every check and sends the existing tool-call smoke check every two minutes.
+It does not change replica settings, register models, write runs or touch eval tasks. Stop it after judging to allow the deployment's normal idle parking.
+These requests keep the existing deployment billing while warm; they require `MODEL_API_KEY` on the process running the command.
+
+### A judge failure becomes the next generation
+
+1. In `/ask`, use a **train** company and confirm the interpretation. Note the failed run ID and its trace.
+2. Before collecting starts, confirm the failure's generation matches the next D-s0 generation shown by `--demo --plan-only`. A generation already past mining uses its saved failure snapshot; a later failure belongs in the next generation.
+3. Run the command below. `--demo` resumes an unfinished D-s0 generation, or chooses the generation after the latest promoted/rejected record. It uses the same full-size traffic, sampling, eval and regression gate as the experiments.
+
+```bash
+uv run python -m scar_train.campaign --demo --max-hours 2
+```
+
+4. Follow the logs through collecting, mining, mutation, building data, training, deployment and gating. Open the generation in `/dashboard`; the candidate's Veri job ID and adapter endpoint are in `/models` and the saved record.
+5. If promoted, click **Re-run on newest model** on the earlier failed run. If rejected, show the gate's reason and keep the previous model current. Never present rejection as improvement.
+
+One invocation performs one generation. Repeating it after completion intentionally starts the next generation; repeating it after interruption resumes the unfinished one.
+Default evidence lives in `runs/demo/D-s0-g<N>/`; use the same explicit `--output-dir` if reconnecting to a chosen recording.
+Tiny mode and the fake trainer are for integration smoke checks only and are excluded from demo results.
+
+### Backup and timing evidence
+
+Record the real cycle on the experiment host, with `/dashboard`, the failed judge run and the Veri job visible in the screen recording. For a terminal transcript as well, on macOS run:
+
+```bash
+mkdir -p ../runs/demo-recording
+script -q ../runs/demo-recording/terminal.txt uv run python -m scar_train.campaign --demo
+```
+
+The driver also writes `events.jsonl`, `campaign.json` and the complete final generation record. Preserve those with the video so the gate scores and timestamps can be checked.
+Use the two real generation timestamps to measure end-to-end time; the toy job's 80-second GPU time does not include traffic, queueing, sampling, deployment or evaluation.
+No full-cycle timing or backup video has been produced on this fresh checkout: it has no experiment database or team API keys. Existing measured toy-job timing is in `docs/VERI.md`.

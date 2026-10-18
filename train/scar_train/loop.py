@@ -198,8 +198,16 @@ def run_generation(
 ) -> GenerationRecord:
     """Run or resume one generation and return its finished record (promoted or rejected). A failed step marks the
     record failed and re-raises. `conn` must be autocommit, so every record write commits at once."""
+    check_backend(ctx, arm, tiny)
     check_run(conn, arm, seed, [generation], tiny)
     return _Generation(conn, ctx, arm, seed, generation, tiny, on_log).run()
+
+
+def check_backend(ctx: LoopContext, arm: str, tiny: bool) -> None:
+    if arm == "D" and not tiny and (isinstance(ctx.trainer, FakeTrainer) or isinstance(ctx.deployer, FakeDeployer)):
+        raise ApiError(
+            503, "trainer_unavailable", "full-size weight updates require TRAINER=veri; fake is tiny-mode only"
+        )
 
 
 class _Generation:

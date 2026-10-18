@@ -1,8 +1,8 @@
 # Veri: verified notes (Person 3, P3-03)
 
 Verified 2026-10-18 against the official Veri pages, the installed SDK source, Veri's open-source managed training runtime, and offline experiments on this laptop.
-**No Veri API call has been made yet: there is no Veri API key on this machine.**
-Every snippet is labelled **ran** (executed locally, offline) or **not run (no API key)**.
+The initial investigation below was offline. The later **P3-05 smoke test results** section records the team's successful live training/deployment test and measured time/cost.
+Snippet labels **ran** and **not run (no API key)** describe the original investigation, not a claim that no live test has since happened.
 Anything still unverified is marked `TODO(VERIFY)`.
 
 ## Evidence keys
@@ -524,3 +524,10 @@ Run with `uv run python -m scar_train.veri smoke` against deployment `5a6d7ab804
 - Attaching the saved adapter took 72 to 88 s until `active`, and the adapter answered a tool call in 1.9 s.
 - The deployment bills $1.05/hour while a replica is up.
 - D-03 is confirmed: training with managed `sft_text` per-turn rows and serving from the one multi-adapter deployment both work.
+
+## Person 3 completion on a fresh checkout
+
+`scar_train.campaign` now drives the specified full-size run order, reconnects to saved jobs, retries failed steps through the existing loop, and stores timestamped evidence. `scar_train.fixtures` builds and validates the previously missing training-example fixture from the real passed runs. Full-size weight-update jobs reject fake backends.
+The Person 3 section of `docs/DEMO.md` includes the live-generation, endpoint-warming and backup-recording commands.
+
+This checkout has no repo-root `.env`, experiment database or team API keys, so no additional billed training job, experiment score or live recording is claimed. P3-11's measured results and P3-14's timed full-cycle recording still require execution on the team's experiment host. Teacher and GRPO paths remain optional, as agreed in the spec's cut order.
