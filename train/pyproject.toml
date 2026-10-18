@@ -13,6 +13,9 @@ dependencies = [
     "openai>=1.50",
     "python-dotenv>=1.0",
     "sentry-sdk>=2.0",
+    "veri-sdk==0.2.44",
+    "transformers==4.56.2",
+    "jinja2>=3.1",
 ]
 
 [dependency-groups]
