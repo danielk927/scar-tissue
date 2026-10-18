@@ -128,7 +128,7 @@ Everything below is merged into `main`, apart from this note (PR). Full details 
 - **3.5 Nudge text:** identical to SPEC 9.2.
 - **Bug found end to end, fixed:** after any `/judge/parse`, `/agent/run_batch` could return 500. A dict row factory leaked into pooled DB connections.
 - **Bug found end to end, fixed:** `httpx2` request logs flooded stdout and Sentry Logs.
-- **4. Jev:** a real mine on base traffic gave 27 failures and 11 included, with 0 inclusion-rule violations. `jev-1.14.0` takes 70-160 ms per triage. The fixtures are real: 45 runs and 27 failure records. **The 20-row spot-check sheet is in `docs/JEV.md`.**
+- **4. Jev:** a real mine on base traffic gave 27 failures and 11 included, with 0 inclusion-rule violations. `jev-1.14.0` takes 70-160 ms per triage. The fixtures are real: 45 runs and 27 failure records. **Spot check (P2-07): cause agreement 17/20 (85%); the inclusion decision matched 14/20 with no false positives, but Jev missed 6 learnable failures (`learnable_p` 0.35–0.51), so lowering `INCLUDE_LEARNABLE_P` is worth a team decision. Details are in `docs/JEV.md`.** Jev rate limits are unknown (console only).
 - **5. Judge:** `PARSE_LM_*` on Groq works. All 32 handoff candidates parse to the correct template (Jev confidence ≥ 0.99), and an off-topic question gets a friendly `valid=false` with 3 examples. The expected answer never appears in a parse response. `/judge/run` works end to end.
 - **6. Web:**
   - Service URLs are read per request (a proxy route replaces the build-time rewrites).
@@ -140,15 +140,11 @@ Everything below is merged into `main`, apart from this note (PR). Full details 
   - `agent_run_failed` issues group per (template, stop reason).
   - Traces nest the env service's spans inside the agent run.
   - The AI Agents Overview works.
-  - Replays are now sent.
+  - Session Replay is confirmed: Person 2's session appears.
 - **8. Demo:** 10 questions confirmed failing on base through the live judge flow, plus a minute-by-minute script with fallbacks and setup steps, all in `docs/DEMO.md`.
 
 **Needs a human**
-- Person 2:
-  - Label the spot check in `docs/JEV.md` (P2-07).
-  - Read the Jev rate limits at console.typesafe.ai.
-  - Add the saved Sentry view links and screenshots (`docs/screenshots/`).
-  - Confirm a replay appears and that a judge click links to its run trace.
+- Person 2: add the Sentry screenshots (`docs/screenshots/`) and the saved view links. Done since the first version of this note: the spot check (P2-07) and a session replay.
 - Person 1:
   - Set `PARSE_LM_BASE_URL`, `PARSE_LM_API_KEY` and `PARSE_LM_MODEL` to the `REFLECTION_LM_*` values (Groq `openai/gpt-oss-120b`). Expect up to about 15 s per parse when Groq's free per-minute token limit is hit.
   - Pull `main` and restart the agent and web app.
