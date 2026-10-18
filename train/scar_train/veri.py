@@ -9,9 +9,9 @@ Per candidate version (for example D-s0-g1):
    adapter as a library model (artifact="adapter"). TrainedAdapter.adapter_uri is that library model id, which is what
    attach needs. It is idempotent per version: a completed or in-flight job of that version is reused, so a re-run
    (an interrupted loop step, or smoke run twice) never pays twice; a new job starts only after a failed one.
-3. VeriDeployer wakes the deployment if it is parked, attaches the model under serve_name=version (an attachment of
-   the same model under that name is accepted as is), waits until it is active, and returns the deployment's
-   OpenAI-compatible base URL with endpoint_model_id=version.
+3. VeriDeployer wakes the deployment if it is parked, attaches the model under serve_name=veri_name(version) (an
+   attachment of the same model under that name is accepted as is), waits until it is active, and returns the
+   deployment's OpenAI-compatible base URL with endpoint_model_id=veri_name(version).
 
 CLI (run from train/; the repo-root .env is loaded):
     uv run python -m scar_train.veri whoami        # account, balance, burn rate: verifies VERI_API_KEY
@@ -46,6 +46,7 @@ import json
 import logging
 import math
 import os
+import re
 import sys
 import tempfile
 import time
@@ -113,6 +114,16 @@ SMOKE_VERSION = "D-smoke-g1"
 SMOKE_MAX_STEPS = 2
 CHECK_SYSTEM_PROMPT = "You are a bookkeeping assistant. Answer by calling the tools."
 CHECK_USER_MESSAGE = "Company: Test\n\nList the accounts."
+
+
+def veri_name(name: str) -> str:
+    """Veri resource names (saved models, serve names) allow 1-63 lowercase letters, digits and hyphens, no leading or
+    trailing hyphen (found live: "D-smoke-g1-..." was rejected). Registry versions keep the SPEC format (D-s0-g1);
+    their served name is this lowercase form, which is what endpoint_model_id holds."""
+    cleaned = re.sub(r"[^a-z0-9-]+", "-", name.lower()).strip("-")[:63].rstrip("-")
+    if not cleaned:
+        raise ValueError(f"no valid Veri name for {name!r}")
+    return cleaned
 
 
 class VeriBackendError(RuntimeError):
@@ -469,7 +480,7 @@ class VeriTrainer:
         """Library model holding the LoRA adapter (idempotent per job); waits until it is ready to attach."""
         with _veri_call(f"saving the adapter of job {job_id}"):
             model = self.client.models.create_from_training_job(
-                job_id, name=f"{version}-{job_id}"[:63], artifact="adapter"
+                job_id, name=veri_name(f"{version}-{job_id}"), artifact="adapter"
             )
         if model.status == "ready":
             return model
@@ -493,7 +504,7 @@ class VeriTrainer:
 
 
 class VeriDeployer:
-    """Deployer: attach the adapter to the multi-adapter deployment under serve_name=version."""
+    """Deployer: attach the adapter to the multi-adapter deployment under serve_name=veri_name(version)."""
 
     def __init__(
         self,
@@ -516,12 +527,13 @@ class VeriDeployer:
 
     def deploy(self, *, version: str, adapter: TrainedAdapter, base: ModelVersion) -> Deployment:
         ensure_serving(self.client, self.deployment_id, poll_s=self.wake_poll_s, sleep=self.sleep)
+        serve_name = veri_name(version)
         with _veri_call(f"listing the adapters of deployment {self.deployment_id}"):
-            current = self._attachment(version)
+            current = self._attachment(serve_name)
         if current is None:
-            with _veri_call(f"attaching model {adapter.adapter_uri} as {version}"):
+            with _veri_call(f"attaching model {adapter.adapter_uri} as {serve_name}"):
                 self.client.deployments.attach_adapter(
-                    self.deployment_id, serve_name=version, model_id=adapter.adapter_uri
+                    self.deployment_id, serve_name=serve_name, model_id=adapter.adapter_uri
                 )
             log.info("veri: attaching model %s as %s", adapter.adapter_uri, version, extra={"model_version": version})
         elif current["model_id"] != adapter.adapter_uri:
@@ -530,8 +542,8 @@ class VeriDeployer:
                 f" not {adapter.adapter_uri}; version names are never reused"
             )
         with _veri_call(f"listing the adapters of deployment {self.deployment_id}"):
-            self._wait_active(version)
-        return Deployment(endpoint_base_url=self.base_url, endpoint_model_id=version)
+            self._wait_active(serve_name)
+        return Deployment(endpoint_base_url=self.base_url, endpoint_model_id=serve_name)
 
     def _attachment(self, version: str) -> dict | None:
         attachments = self.client.deployments.adapters(self.deployment_id)

@@ -19,6 +19,7 @@ from .factories import model_version
 
 BASE = "Qwen/Qwen3-4B-Instruct-2507"
 VERSION = "D-s0-g1"
+SERVE = "d-s0-g1"  # veri_name(VERSION): Veri names are lowercase
 API = "https://api.veri.studio"
 DEP_URL = f"{API}/v1/deployments/dep_1"
 
@@ -332,7 +333,7 @@ def test_trainer_uploads_trains_and_saves_the_adapter(tmp_path, caplog):
         },
     }
     (job_id,), kw = fake.call("models.create_from_training_job")
-    assert job_id == "job_1" and kw["artifact"] == "adapter" and kw["name"].startswith(VERSION)
+    assert job_id == "job_1" and kw["artifact"] == "adapter" and kw["name"].startswith(SERVE)
     assert "duration_seconds=300.0 cost_usd=0.42" in caplog.text
     assert "lineage seed 1 is not sent" in caplog.text
 
@@ -431,25 +432,25 @@ def test_deployer_wakes_attaches_and_waits_until_active():
     dep = make_deployer(fake).deploy(
         version=VERSION, adapter=TrainedAdapter("mdl_1", "job_1"), base=model_version(endpoint_base_url=DEP_URL)
     )
-    assert dep == Deployment(endpoint_base_url=DEP_URL, endpoint_model_id=VERSION)
+    assert dep == Deployment(endpoint_base_url=DEP_URL, endpoint_model_id=SERVE)
     assert fake.names().count("deployments.wake") == 1
-    assert fake.call("deployments.attach_adapter") == (("dep_1",), {"serve_name": VERSION, "model_id": "mdl_1"})
+    assert fake.call("deployments.attach_adapter") == (("dep_1",), {"serve_name": SERVE, "model_id": "mdl_1"})
     assert fake.names()[-2:] == ["deployments.adapters", "deployments.adapters"]
 
 
 def test_deployer_reuses_an_identical_attachment_and_refuses_a_different_one():
     """The loop re-runs an interrupted deploying step: the attachment made before (maybe still loading) is accepted."""
     fake = FakeVeri(
-        attachments=[{"serve_name": VERSION, "model_id": "mdl_1"}],
+        attachments=[{"serve_name": SERVE, "model_id": "mdl_1"}],
         adapter_statuses=("attaching", "attaching", "active"),
     )
     adapter = TrainedAdapter("mdl_1", "job_1")
     dep = make_deployer(fake).deploy(version=VERSION, adapter=adapter, base=model_version())
-    assert dep == Deployment(endpoint_base_url=DEP_URL, endpoint_model_id=VERSION)
+    assert dep == Deployment(endpoint_base_url=DEP_URL, endpoint_model_id=SERVE)
     assert "deployments.attach_adapter" not in fake.names()
     assert fake.names().count("deployments.adapters") == 3
 
-    fake = FakeVeri(attachments=[{"serve_name": VERSION, "model_id": "mdl_other", "status": "active"}])
+    fake = FakeVeri(attachments=[{"serve_name": SERVE, "model_id": "mdl_other", "status": "active"}])
     with pytest.raises(veri.VeriBackendError, match="already attached"):
         make_deployer(fake).deploy(version=VERSION, adapter=adapter, base=model_version())
 
@@ -457,7 +458,7 @@ def test_deployer_reuses_an_identical_attachment_and_refuses_a_different_one():
 def test_deployer_attach_timeout_and_load_failure():
     adapter = TrainedAdapter("mdl_1", "job_1")
     fake = FakeVeri(adapter_statuses=("attaching",))
-    with pytest.raises(veri.VeriTimeout, match="D-s0-g1 to become active"):
+    with pytest.raises(veri.VeriTimeout, match="d-s0-g1 to become active"):
         make_deployer(fake, poll_s=5, attach_timeout_s=20).deploy(
             version=VERSION, adapter=adapter, base=model_version()
         )
@@ -617,8 +618,17 @@ def test_smoke_runs_every_step_against_fakes(tmp_path):
         echo=lambda _: None,
         check=lambda url, model, key: checked.append((url, model)) or (["get_accounts({})"], 0.5),
     )
-    assert checked == [(DEP_URL, "scar-base"), (DEP_URL, veri.SMOKE_VERSION)]
+    assert checked == [(DEP_URL, "scar-base"), (DEP_URL, veri.veri_name(veri.SMOKE_VERSION))]
     assert len(fake.uploaded[0].splitlines()) == 3  # one row per assistant turn of the toy transcript
     assert fake.call("training_jobs.create")[1]["hyperparameters"]["max_steps"] == 2
-    assert fake.call("deployments.attach_adapter")[1] == {"serve_name": "D-smoke-g1", "model_id": "mdl_1"}
+    assert fake.call("deployments.attach_adapter")[1] == {"serve_name": "d-smoke-g1", "model_id": "mdl_1"}
     assert (out["training_job_id"], out["job_cost_usd"], out["balance_before_usd"]) == ("job_1", 0.42, 20.0)
+
+
+def test_veri_name_lowercases_and_strips_invalid_characters():
+    assert veri.veri_name("D-s0-g1") == "d-s0-g1"
+    assert veri.veri_name("D-smoke-g1-445ce55ec2ef") == "d-smoke-g1-445ce55ec2ef"
+    assert veri.veri_name("C_cand--x!") == "c-cand--x"
+    assert len(veri.veri_name("A" * 100)) == 63
+    with pytest.raises(ValueError):
+        veri.veri_name("---")
