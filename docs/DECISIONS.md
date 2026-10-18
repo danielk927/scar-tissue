@@ -24,6 +24,9 @@ Append-only. One line per decision, under your person's heading (SPEC R11).
 - 2026-10-17: Learn-step B: lesson ID = `{lineage}:{failure_id}` (one lesson per failure); prompt keeps the newest lessons (by generation, then failure_id) under a chars/3 token estimate of 3,000.
 - 2026-10-17: Learn-step C: train/val pool draw `random.Random(f"gepa:{seed}:{generation}")`, first 50 to train, next 50 to val; candidate IDs `C-cand-<sha256(text)[:16]>`; a custom gepa stopper keeps agent runs strictly within GEPA_MAX_METRIC_CALLS (may leave up to 56 unspent); a dead reflection LM or an all-infrastructure-failure batch is a 503, never a silently stored seed prompt.
 - 2026-10-17: Report: the score after a generation is the candidate's if promoted, else the parent's (also for failed generations); arm A repeats generation 0. Lives at `experiments/scar_experiments/report.py`.
+- 2026-10-17: Mutator seeds with `random.Random(f"{failure_id}:{seed}:{i}")` instead of SPEC 9.6's `hash((failure_id, seed, i))`, which is salted per process and breaks R8 (test runs /mutate under two PYTHONHASHSEED values).
+- 2026-10-17: Mutator: variants 0-1 use the original company, the rest round-robin over other train companies in a seeded order; the last round-half-up(0.3 n) variants use difficulty + 1 when supported; n = 2 or 3 cannot reach three companies. Idempotent per failure (existing variants are returned whatever the seed or n), guarded by an advisory lock; only included failures on train tasks (409 otherwise); a paraphrase LM error is a 503.
+- 2026-10-17: Simulator: reuses stored traffic runs matching (arm, seed, generation, task, model_version, prompt_version), skipping infrastructure-failed runs, and sends one batch for the rest at max_concurrency 16 with an agent timeout of (ceil(n/16)+1) x 180 s; an all-infrastructure-failure batch is a 503.
 
 ## Person 2
 
