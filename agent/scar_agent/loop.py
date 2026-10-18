@@ -46,6 +46,16 @@ def user_message(company_name: str, task: Task) -> str:
     return f"Company: {company_name}\n\n{task.prompt}"
 
 
+def with_call_extras(sent: list[dict], extras: dict[str, dict]) -> list[dict]:
+    """Re-attach provider-only tool-call fields (Gemini's `extra_content` thought signature) to outgoing
+    messages. The shared ToolCall model has no slot for them, so stored transcripts never contain them."""
+    for m in sent:
+        for tc in m.get("tool_calls") or []:
+            if tc["id"] in extras:
+                tc["extra_content"] = extras[tc["id"]]
+    return sent
+
+
 def truncate(content: str) -> str:
     if len(content) > TOOL_RESULT_MAX_CHARS:
         return content[:TOOL_RESULT_MAX_CHARS] + "...[truncated]"
@@ -66,6 +76,7 @@ class _Loop:
         self.steps = 0
         self.input_tokens = 0
         self.output_tokens = 0
+        self.call_extras: dict[str, dict] = {}
 
     async def run(self) -> None:
         ctx = self.ctx
@@ -73,7 +84,7 @@ class _Loop:
         no_tool_turns = 0
         for step in range(1, ctx.req.max_steps + 1):
             self.steps = step
-            sent = to_openai_messages(self.messages)
+            sent = with_call_extras(to_openai_messages(self.messages), self.call_extras)
             with self.trace.chat(ctx.endpoint_model_id, sent) as chat_span:
                 try:
                     async with asyncio.timeout(MODEL_TIMEOUT_S):
@@ -85,7 +96,11 @@ class _Loop:
                             temperature=ctx.req.temperature,
                             max_tokens=MAX_TOKENS_PER_TURN,
                         )
-                    msg = from_openai_message(resp.choices[0].message.model_dump())
+                    raw = resp.choices[0].message.model_dump()
+                    msg = from_openai_message(raw)
+                    for tc in raw.get("tool_calls") or []:
+                        if tc.get("extra_content"):
+                            self.call_extras[tc["id"]] = tc["extra_content"]
                 except (TimeoutError, openai.APIError) as e:
                     chat_span.error(repr(e))
                     self.stop_reason = "model_error"

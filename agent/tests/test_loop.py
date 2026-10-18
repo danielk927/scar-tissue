@@ -142,6 +142,16 @@ async def test_multiple_tool_calls_in_order():
     assert [m.tool_call_id for m in result.messages if m.role == "tool"] == ["c1", "c2", "c3"]
 
 
+async def test_provider_extra_content_echoed_but_not_stored():
+    sig = {"google": {"thought_signature": "abc"}}
+    first = assistant(calls=[{**tool_call("get_accounts", {}, "c1"), "extra_content": sig}])
+    result, llm, _ = await run([first, assistant(calls=[tool_call("submit_answer", {"number": 100.0}, "c2")])])
+    sent_call = llm.requests[1]["messages"][2]["tool_calls"][0]
+    assert sent_call["extra_content"] == sig  # Gemini requires the signature back
+    assert "extra_content" not in json.dumps(result.model_dump(mode="json"))  # transcript stays contract-shaped
+    assert result.passed
+
+
 async def test_whole_run_timeout(monkeypatch):
     monkeypatch.setattr(loop_mod, "RUN_TIMEOUT_S", 0.05)
 
