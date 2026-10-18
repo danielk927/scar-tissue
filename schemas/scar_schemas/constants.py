@@ -1,5 +1,5 @@
 # scar_schemas/constants.py — SHARED CONTRACT
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 TOOLS_VERSION = "tools_v1"
 BASE_PROMPT_VERSION = "system_v1"
 EVAL_SET_ID = "eval_v1"

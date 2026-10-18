@@ -15,7 +15,9 @@ def to_openai_messages(messages: list[ChatMessage]) -> list[dict]:
     assistant tool calls -> {"id": c.id, "type": "function",
                              "function": {"name": c.name, "arguments": dumps_args(c.arguments)}}
     tool messages        -> {"role": "tool", "tool_call_id": ..., "name": ..., "content": ...}
-    Omit keys whose value is None. If arguments == {"__raw__": s}, emit s unchanged as the arguments string."""
+    Omit keys whose value is None. Arguments are always valid JSON: {"__raw__": s} (unparseable model output)
+    is emitted as the JSON object itself, because vLLM rejects a request whose earlier tool-call arguments are
+    not valid JSON (schema 1.2.0)."""
     out = []
     for m in messages:
         d: dict = {"role": m.role}
@@ -39,8 +41,7 @@ def to_openai_messages(messages: list[ChatMessage]) -> list[dict]:
 
 
 def _args_string(arguments: dict) -> str:
-    if set(arguments) == {"__raw__"} and isinstance(arguments["__raw__"], str):
-        return arguments["__raw__"]
+    # {"__raw__": s} included: from_openai_message parses it back to the same dict, so the round trip holds
     return dumps_args(arguments)
 
 

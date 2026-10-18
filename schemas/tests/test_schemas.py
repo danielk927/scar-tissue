@@ -16,7 +16,7 @@ from scar_schemas.openai_format import dumps_args, from_openai_message, load_too
 
 
 def test_constants():
-    assert constants.SCHEMA_VERSION == "1.1.0"
+    assert constants.SCHEMA_VERSION == "1.2.0"
     assert constants.TOOLS_VERSION == "tools_v1"
     assert constants.SEEDS == (0, 1, 2)
 
@@ -90,7 +90,8 @@ def test_openai_round_trip():
     oa = to_openai_messages(msgs)
     assert "content" not in oa[2]
     assert oa[2]["tool_calls"][0]["function"]["arguments"] == '{"account_id":"x","limit":5}'
-    assert oa[2]["tool_calls"][1]["function"]["arguments"] == "{not json"
+    # unparseable model output is re-sent as valid JSON so vLLM accepts the next request (1.2.0)
+    assert oa[2]["tool_calls"][1]["function"]["arguments"] == '{"__raw__":"{not json"}'
     assert oa[3] == {"role": "tool", "content": '{"ok":true}', "tool_call_id": "c1", "name": "get_transactions"}
     back = [from_openai_message(m) for m in oa]
     assert back == msgs

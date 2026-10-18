@@ -104,13 +104,16 @@ async def test_tool_ok_false_returns_error_to_model():
 
 
 async def test_malformed_arguments_not_executed():
-    result, _, env = await run([
+    result, llm, env = await run([
         assistant(calls=[tool_call("get_transactions", "{not json")]),
         assistant(calls=[tool_call("submit_answer", {"number": 100.0})]),
     ])
     assert env.tool_calls == []
     assert result.messages[2].tool_calls[0].arguments == {"__raw__": "{not json"}
     assert result.messages[3].content == RAW_ARGS_ERROR
+    # the next request re-sends the malformed call as valid JSON, which vLLM requires (schema 1.2.0)
+    resent = llm.requests[1]["messages"][2]["tool_calls"][0]["function"]["arguments"]
+    assert json.loads(resent) == {"__raw__": "{not json"}
 
 
 async def test_truncation():
@@ -169,10 +172,19 @@ async def test_whole_run_timeout(monkeypatch):
     {"role": "assistant", "tool_calls": [
         {"id": "c1", "type": "function", "function": {"name": "get_transactions",
                                                       "arguments": '{"limit":5,"start_date":"2026-01-01"}'}}]},
-    {"role": "assistant", "tool_calls": [
-        {"id": "c1", "type": "function", "function": {"name": "sql_query", "arguments": "{oops"}}]},
     {"role": "tool", "tool_call_id": "c1", "name": "get_accounts", "content": "[]"},
     {"role": "user", "content": "Company: X\n\nQ"},
 ])
 def test_openai_format_round_trip(msg):
     assert to_openai_messages([from_openai_message(msg)])[0] == msg
+
+
+def test_malformed_arguments_round_trip_as_valid_json():
+    # schema 1.2.0: what the model wrote is kept as {"__raw__": s}; on the wire it is valid JSON
+    model_msg = {"role": "assistant", "tool_calls": [
+        {"id": "c1", "type": "function", "function": {"name": "sql_query", "arguments": "{oops"}}]}
+    stored = from_openai_message(model_msg)
+    assert stored.tool_calls[0].arguments == {"__raw__": "{oops"}
+    wire = to_openai_messages([stored])[0]
+    assert json.loads(wire["tool_calls"][0]["function"]["arguments"]) == {"__raw__": "{oops"}
+    assert from_openai_message(wire) == stored
