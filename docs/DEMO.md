@@ -103,3 +103,36 @@ Optional, if time allows: the replay player paused on the `/ask` result card (`s
 Notes for the team: rehearse twice before 08:00 PDT; time the 1:00–2:30 segment with a real judge-style question; decide who clicks and who talks.
 
 ## Person 3: demo generation procedure
+
+State at the freeze (07:15 PDT): no more loop runs.
+`D-s0` serves `D-s0-g2` (`GET :8003/models/current?arm=D&seed=0`), attached to deployment `5a6d7ab804e0` as `d-s0-g2` next to `scar-base` and the rejected `d-s0-g1`.
+Numbers and every candidate are in `docs/RESULTS.md`.
+
+### Keep it warm
+
+The deployment parks after 15 idle minutes and takes about 15 minutes to wake, and every adapter parks with it.
+Run `cd train && uv run python -m scar_train.veri wake` 30 minutes before judging, then ask one question on `/ask` so both the base and `d-s0-g2` have answered once.
+Between judges, one question every 10 minutes keeps it up.
+It bills $1.05 per hour while awake; the Veri balance was $10.17 at the freeze.
+
+### What to show in 2:30-3:20
+
+1. **/dashboard generations table**: D-s0-g1 scored 70.7% on held-out companies but was **rejected**: it broke 9 regression tasks the base solved and fixed 3 (86.7% vs the base's 93.3% on the same set, more than the 5-point tolerance). D-s0-g2, trained on both generations' 405 examples, scored **72.7% vs 46.3%** and beat the base on regression too (92.7% vs 88.5%), so it shipped.
+2. **The Veri jobs**: D-s0-g1 https://veri.studio/training?job=1b079d04fb2a and D-s0-g2 https://veri.studio/training?job=d1a57653ef1b (one LoRA job each, `sft_text`, one row per assistant turn).
+3. **Fixed on held-out companies**: on `eval_v1`, D-s0-g2 passes 96 tasks the base failed and fails 17 the base passed. Open a pair side by side (`/runs/<run_id>`; these run pages exist only on Person 1's laptop, which has the database):
+
+| Family | Question | Base (failed) | D-s0-g2 (passed) |
+|---|---|---|---|
+| aggregation | From 2026-10-01 to 2026-10-05 inclusive, what did Insurance transactions sum to? (company-083) | `run_cb1fbdf689924dfb9b977bd35d17153c` (no submit) | `run_ee56cb4faf2f4f6e8ff47109ef193db3` (8 s) |
+| aggregation | What is the number of transactions posted to the Wage Expense account from 2025-10-20 through 2026-03-30? (company-022) | `run_980499c1128841af91fed8417163a3fa` (no submit) | `run_f23370ba348e4d7a9db1b57603bf79c1` (8 s) |
+| anomaly | From 2026-09-06 to 2026-09-16 inclusive, flag all transactions of $200.00 or more whose amounts are exact multiples of $100. (company-017) | `run_fc94fc9088d64a33a6c82ea6722c6d07` (wrong IDs) | `run_892d5280f40d4f1caf11e5f3b6d85bb9` (23 s) |
+| bookkeeping | We owe $3,766.97 for Interest Expense that has not been billed yet. Accrue it on 2026-03-31 against Accrued Interest. (company-022) | `run_ab8cf5c38fc745b99134b2731fff730c` (wrong entry) | `run_33f73c7bc7fb4c94a42a2990db14574f` (14 s) |
+
+4. **Re-run on newest model** on a judge question runs `D-s0-g2`. It is not guaranteed to pass (it fails 27% of held-out tasks); if it fails, fall back to the table above.
+
+### A live generation (not during judging)
+
+A full generation took 1.5 to 2.5 hours on one replica, so none runs during judging.
+Measured on D-s0-g2: traffic 11 min, mining and variants under 1 min, sampling the variants 32 min, Veri training 45 min (A100; D-s0-g1 took about 18 min on an H100), attaching the adapter 1 to 15 min, gate 29 min.
+A tiny generation on its own lineage (`SEED=9 scripts/smoke_ic2.sh`, with `TRAINER=veri`) runs every step on a few tasks, but it still waits for a Veri training slot (3 to 4 minutes queued in the P3-05 smoke) and it shares the replica with the judge's runs.
+If a judge asks for a live cycle, show the D-s0-g2 records and Veri job instead.
