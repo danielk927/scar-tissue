@@ -67,4 +67,4 @@ async def test_batch_200_runs_at_16(store):
 def test_system_v1_matches_spec():
     text = load_system_v1()
     assert text.startswith("You are a careful bookkeeping assistant")
-    assert text.endswith("The task only ends when you call submit_answer.")
+    assert text.endswith("The task only ends when you call the submit_answer tool.")
