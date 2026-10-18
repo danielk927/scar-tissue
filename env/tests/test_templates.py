@@ -517,14 +517,23 @@ def test_bookkeeping_samplers_follow_the_dataset_decisions(conn, ledger):
             ("Wages", "Wages Payable"),
             *((e, "Accounts Payable") for e in ("Rent and Lease", "Utilities", "Freight and Delivery", "Insurance")),
         }
-        for seed in range(20):
+        prepaid_targets, months, reclass_targets = set(), set(), set()
+        for seed in range(40):
             prepaid = TEMPLATES["book.prepaid_amortization"].sample(conn, company, random.Random(seed), 2)
             assert prepaid["prepaid_account_id"] == f"{cid}:acct-prepaid-expenses"
+            prepaid_targets.add(company.account_name(prepaid["expense_account_id"]))
+            months.add(prepaid["months"])
             reclass = TEMPLATES["book.reclassify"].sample(conn, company, random.Random(seed), 3)
             txn = rows[reclass["txn_id"]]
             assert txn.txn_type == "bill" and txn.amount > 0
             assert reclass["to_account_id"] != txn.account_id
             assert company.accounts[reclass["to_account_id"]][1] == "expense"
+            reclass_targets.add(company.account_name(reclass["to_account_id"]))
+        # only expenses a business prepays; at most 6 monthly entries so the task fits MAX_STEPS
+        assert prepaid_targets == {"Rent and Lease", "Insurance"}
+        assert months == {2, 3, 4}  # 6 needs six month-ends; the synthetic ledger has five
+        # never COGS, wages or other accounts a vendor bill is not moved into
+        assert reclass_targets == {"Rent and Lease", "Utilities", "Insurance"}
 
 
 def test_anomaly_sampler_skips_a_company_without_matches(conn, ledger):

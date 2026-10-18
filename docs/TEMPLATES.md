@@ -359,7 +359,8 @@ Answer: `months` entries, one on the last day of each month from `start_month` o
 - Example: $1,000.00 over 3 months from December 2025 gives 333.33 on 2025-12-31, 333.33 on 2026-01-31 and 333.34 on 2026-02-28.
 - The last day of the month follows the calendar, including February 29 in leap years.
 - `total` must be large enough that every month gets a positive amount.
-- Sampler: always the loader's `{company_id}:acct-prepaid-expenses` account, a random expense account, a total from $600.00 to $24,000.00, `months` from (2, 3, 4, 6, 12), and a start month such that every entry date lies inside the data range.
+- Sampler: always the loader's `{company_id}:acct-prepaid-expenses` account, an expense account a business actually prepays (Advertising and Marketing, Equipment Rental, Insurance, Legal and Professional Fees, Operating Expense, Rent and Lease, Taxes and Licenses), a total from $600.00 to $24,000.00, `months` from (2, 3, 4, 6), and a start month such that every entry date lies inside the data range.
+- `months` stops at 6 so the task fits the agent's `MAX_STEPS` (12) even with one tool call per step; 12-month schedules were dropped for that reason.
 
 ### `book.reclassify`
 
@@ -375,7 +376,8 @@ WHERE company_id = %(company_id)s AND txn_id = %(txn_id)s
 - Prompts show the `txn_id`: a transaction has no human name, and vendor plus date plus amount is not unique in this ledger (recurring identical bills, planted duplicates).
 - The agent still has to look up the transaction's date, amount and current account (with `sql_query`).
 - Validation: the transaction must belong to the company and have a positive amount, and `to_account_id` must be a different account of the company.
-- Sampler: a random positive-amount bill row and a random expense account other than its current one.
+- Sampler: a random positive-amount bill row and a random operating expense account other than its current one (Advertising and Marketing, Equipment Rental, Insurance, Job Materials, Legal and Professional Fees, Operating Expense, Rent and Lease, Repairs and Maintenance, Shipping and Delivery, Subcontractors, Taxes and Licenses, Utilities).
+- COGS, wages, depreciation, interest, income tax and bad debts are never targets, because a vendor bill is not moved into them.
 
 ## Checked on the real ledger
 

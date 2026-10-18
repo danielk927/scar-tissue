@@ -30,7 +30,34 @@ from .base import (
 )
 
 PREPAID_ACCOUNT = "acct-prepaid-expenses"  # added to every company by the loader (docs/DECISIONS.md)
-PREPAID_MONTHS = (2, 3, 4, 6, 12)
+# At most 6 entries, so a prepaid task fits the agent's MAX_STEPS even with one tool call per step.
+PREPAID_MONTHS = (2, 3, 4, 6)
+# Expenses a business actually prepays; prepaid tasks amortize into one of these (by account name).
+PREPAID_EXPENSES = {
+    "Advertising and Marketing",
+    "Equipment Rental",
+    "Insurance",
+    "Legal and Professional Fees",
+    "Operating Expense",
+    "Rent and Lease",
+    "Taxes and Licenses",
+}
+# Operating accounts a bill can plausibly be reclassified into (by account name); excludes COGS, wages,
+# depreciation, interest, income tax and bad debts, which a vendor bill is never moved into.
+RECLASS_TARGETS = {
+    "Advertising and Marketing",
+    "Equipment Rental",
+    "Insurance",
+    "Job Materials",
+    "Legal and Professional Fees",
+    "Operating Expense",
+    "Rent and Lease",
+    "Repairs and Maintenance",
+    "Shipping and Delivery",
+    "Subcontractors",
+    "Taxes and Licenses",
+    "Utilities",
+}
 # The accrual sampler credits the liability an accountant would use (by account name, the same in every company);
 # any other expense is accrued to Accounts Payable. These expenses are never accrued to a payable.
 ACCRUAL_LIABILITY = {
@@ -173,7 +200,8 @@ class PrepaidAmortization(Template):
     )
 
     def sample(self, conn, company, rng, difficulty):
-        prepaid, expense = f"{company.company_id}:{PREPAID_ACCOUNT}", company.accounts_of_type("expense")
+        prepaid = f"{company.company_id}:{PREPAID_ACCOUNT}"
+        expense = [a for a in company.accounts_of_type("expense") if company.account_name(a) in PREPAID_EXPENSES]
         ends = month_ends(company)
         choices = [m for m in PREPAID_MONTHS if m <= len(ends)]
         if prepaid not in company.accounts or not expense or not choices:
@@ -263,7 +291,11 @@ WHERE company_id = %(company_id)s AND txn_id = %(txn_id)s""",
         if not rows:
             return None
         txn_id, account = rng.choice(rows)
-        targets = [a for a in company.accounts_of_type("expense") if a != account]
+        targets = [
+            a
+            for a in company.accounts_of_type("expense")
+            if a != account and company.account_name(a) in RECLASS_TARGETS
+        ]
         return {"txn_id": txn_id, "to_account_id": rng.choice(targets)} if targets else None
 
     def check(self, conn, company, p):
