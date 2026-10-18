@@ -21,3 +21,6 @@ data/raw/
 
 # agent worktrees
 .claude/worktrees/
+
+# loop runner state (scar_train.loop)
+runs/
