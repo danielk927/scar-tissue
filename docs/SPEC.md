@@ -393,7 +393,7 @@ Everything in this section lives in the `scar_schemas` package. Person 3 creates
 
 ```python
 # scar_schemas/constants.py — SHARED CONTRACT
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 TOOLS_VERSION = "tools_v1"
 BASE_PROMPT_VERSION = "system_v1"
 EVAL_SET_ID = "eval_v1"
@@ -424,7 +424,7 @@ SAMPLE_TEMPERATURE = 0.8
 MAX_EXAMPLES_PER_TASK = 2
 REPLAY_RATIO = 1.0             # replay examples per self example
 REGRESSION_SET_SIZE = 100
-REGRESSION_MIN_PASS = 0.95
+REGRESSION_TOLERANCE = 0.05     # candidate may trail the parent on the regression set by this (1.3.0)
 
 # arm B (memory) and arm C (GEPA)
 MEMORY_MAX_LESSONS = 20
@@ -436,6 +436,11 @@ GEPA_VAL_SIZE = 50
 **1.1.0 (2026-10-18):** `K_SAMPLES` 8 to 4 and `VARIANTS_PER_FAILURE` 10 to 5 (the first fallback in 9.13) and `FAILURE_CAP_PER_GEN` 50 to 25, because one Veri L4 replica serves every agent run and a full-size generation (about 5,000 runs) would take several hours each; traffic, eval and regression sizes are unchanged.
 
 **1.2.0 (2026-10-18):** `to_openai_messages` emits `{"__raw__": s}` tool-call arguments as that JSON object instead of the bare string `s`. vLLM parses every earlier tool call's arguments with `json.loads` before applying the chat template, so a transcript in which the model once wrote malformed arguments made every later request fail with HTTP 400 and the run end as `model_error` (reproduced on `base`: the raw form returns 400, the wrapped form returns 200 and the model retries with a valid call). The training export's `json.loads` of the same strings now succeeds too, and `from_openai_message` parses the wrapped form back to `{"__raw__": s}`, so round trips are unchanged.
+
+**1.3.0 (2026-10-18):** `REGRESSION_MIN_PASS = 0.95` is replaced by `REGRESSION_TOLERANCE = 0.05`, and `GenerationRecord` gains `parent_regression_score`.
+The gate now re-runs the parent on the same regression set and promotes only if the candidate scores at least the parent's score minus the tolerance (9.9).
+Measured on D-s0-g1's set of 90 tasks that `base` had passed in temperature-0 traffic, `base` itself re-passed only 81 (0.90) at temperature 0, so the absolute 0.95 bar would reject every candidate, including an exact copy of the parent.
+The candidate (0.867) broke 10 of those tasks and fixed 7 that `base` missed on the re-run, within run-to-run noise, while its eval score went from 0.45 to 0.71.
 
 These are starting values. If a value must change (for example, `K_SAMPLES` down to 4 because sampling is too slow), follow Section 8.9 so all three services change together.
 
@@ -807,6 +812,7 @@ class GenerationRecord(BaseModel):
     eval_score: float | None = None        # candidate's score on eval_v1
     parent_eval_score: float | None = None
     regression_score: float | None = None
+    parent_regression_score: float | None = None  # parent re-run on the same regression set (1.3.0)
     notes: str = ""
     started_at: datetime
     finished_at: datetime | None = None
@@ -1427,8 +1433,8 @@ For lineage `D-s{seed}` at generation `g`:
 For candidate `c` with parent `p` (the current promoted version of the lineage):
 
 1. **Eval score:** run every task in `eval_v1` once at `EVAL_TEMPERATURE`, `purpose="eval"`. `eval_score = passed / 300`. The parent's eval score is reused from its own gate (generation 0's base score is computed once and shared by all lineages).
-2. **Regression set:** up to `REGRESSION_SET_SIZE` train-split tasks that `p` passed in its most recent `traffic` runs, chosen with `random.Random(seed * 100 + g)`. Run once at temperature 0, `purpose="regression"`. `regression_score = passed / size`.
-3. **Rule:** promote if `eval_score(c) > eval_score(p)` **and** `regression_score(c) >= REGRESSION_MIN_PASS`. Otherwise reject; the parent stays current, and the lineage's training examples are kept for the next generation.
+2. **Regression set:** up to `REGRESSION_SET_SIZE` train-split tasks that `p` passed in its most recent `traffic` runs, chosen with `random.Random(seed * 100 + g)`. Run `c` and `p` once each at temperature 0, `purpose="regression"`. `regression_score = passed / size` for each. The parent's runs are reused across lineages per (task, model version, prompt version); it does not re-pass every task it passed once (1.3.0).
+3. **Rule:** promote if `eval_score(c) > eval_score(p)` **and** `regression_score(c) >= regression_score(p) - REGRESSION_TOLERANCE`. Otherwise reject; the parent stays current, and the lineage's training examples are kept for the next generation.
 
 The same gate applies to every arm. For B and C, the "candidate" is a prompt version with the parent's weights.
 

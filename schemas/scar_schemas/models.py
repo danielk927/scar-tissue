@@ -363,6 +363,7 @@ class GenerationRecord(BaseModel):
     eval_score: float | None = None        # candidate's score on eval_v1
     parent_eval_score: float | None = None
     regression_score: float | None = None
+    parent_regression_score: float | None = None  # parent re-run on the same regression set (1.3.0)
     notes: str = ""
     started_at: datetime
     finished_at: datetime | None = None

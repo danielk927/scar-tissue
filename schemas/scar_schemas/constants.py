@@ -1,5 +1,5 @@
 # scar_schemas/constants.py — SHARED CONTRACT
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 TOOLS_VERSION = "tools_v1"
 BASE_PROMPT_VERSION = "system_v1"
 EVAL_SET_ID = "eval_v1"
@@ -30,7 +30,7 @@ SAMPLE_TEMPERATURE = 0.8
 MAX_EXAMPLES_PER_TASK = 2
 REPLAY_RATIO = 1.0             # replay examples per self example
 REGRESSION_SET_SIZE = 100
-REGRESSION_MIN_PASS = 0.95
+REGRESSION_TOLERANCE = 0.05     # candidate may trail the parent on the regression set by this (1.3.0)
 
 # arm B (memory) and arm C (GEPA)
 MEMORY_MAX_LESSONS = 20

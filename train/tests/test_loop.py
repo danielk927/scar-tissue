@@ -58,7 +58,7 @@ class Fakes:
         self.examples = ["ex"] * 5
         self.eval_ids = [f"task_eval_{i:02d}" for i in range(39, -1, -1)]  # unsorted on purpose
         self.base_score = 0.4
-        self.gate = GateResult(0.5, 1.0, True)
+        self.gate = GateResult(0.5, 1.0, 1.0, True)
 
     def call(self, name: str, **kw):
         self.calls.append(name)
@@ -230,15 +230,16 @@ def test_arms_b_and_c_learn_a_prompt_on_the_parent_weights(conn, ctx, f, base, a
 
 def test_promotion_and_rejection_bookkeeping(conn, ctx, f, base):
     g1 = run(conn, ctx, g=1)
-    assert (g1.status, g1.eval_score, g1.parent_eval_score, g1.regression_score) == ("promoted", 0.5, 0.4, 1.0)
+    assert (g1.status, g1.eval_score, g1.parent_eval_score) == ("promoted", 0.5, 0.4)
+    assert (g1.regression_score, g1.parent_regression_score) == (1.0, 1.0)
     assert (g1.current_model_version, g1.current_prompt_version, g1.finished_at is not None) == (
         "D-s0-g1",
         "system_v1",
         True,
     )
-    assert "gate: eval 0.500 vs parent 0.400, regression 1.000" in g1.notes
+    assert "gate: eval 0.500 vs parent 0.400, regression 1.000 vs parent 1.000" in g1.notes
 
-    f.gate = GateResult(0.45, 1.0, False)
+    f.gate = GateResult(0.45, 1.0, 1.0, False)
     g2 = run(conn, ctx, g=2)
     assert f.args["simulate"][-1]["req"].model_version == "D-s0-g1"
     assert (f.args["run_gate"][-1]["parent_model_version"], f.args["run_gate"][-1]["parent_eval_score"]) == (
@@ -255,7 +256,7 @@ def test_promotion_and_rejection_bookkeeping(conn, ctx, f, base):
     assert registry.get_model_version(conn, "D-s0-g1").status == "promoted"
     assert registry.current(conn, "D", 0) == ("D-s0-g1", "system_v1")
 
-    f.gate = GateResult(0.6, 1.0, True)
+    f.gate = GateResult(0.6, 1.0, 1.0, True)
     g3 = run(conn, ctx, g=3)
     assert (g3.parent_model_version, g3.parent_eval_score, g3.current_model_version) == ("D-s0-g1", 0.5, "D-s0-g3")
 
@@ -598,6 +599,7 @@ def test_tiny_generation_end_to_end_with_the_real_builder_and_gate(conn, base, t
     )
     assert rec.examples_built == 15 + 10  # 5 originals + 10 variants pass once each; 10 passed traffic tasks replay
     assert (rec.eval_score, round(rec.parent_eval_score, 4), rec.regression_score) == (1.0, 0.3333, 1.0)
+    assert rec.parent_regression_score is not None
     assert rec.notes.startswith("[tiny]; fake trainer") and rec.current_model_version == "D-s0-g1"
     mv = registry.get_model_version(conn, "D-s0-g1")
     assert (mv.status, mv.endpoint_model_id, mv.adapter_uri) == ("promoted", "base", "fake://D-s0-g1")

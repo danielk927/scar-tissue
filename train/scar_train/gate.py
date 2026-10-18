@@ -1,29 +1,34 @@
 """Promotion gate (SPEC 9.9, P3-09).
 
-- promotion_rule: promote iff eval_score > parent_eval_score and regression_score >= REGRESSION_MIN_PASS.
+- promotion_rule: promote iff eval_score > parent_eval_score and
+  regression_score >= parent_regression_score - REGRESSION_TOLERANCE.
 - eval_score runs every task in `eval_task_ids` once at EVAL_TEMPERATURE with purpose="eval" and returns
   passed / len(eval_task_ids). It reuses eval runs already stored for the same (task, model_version,
   prompt_version) so a crashed gate resumes and generation 0's base score is computed once for all lineages.
 - regression_task_ids: up to REGRESSION_SET_SIZE train-split tasks the parent passed in its most recent traffic
   runs of the lineage, chosen with random.Random(seed * 100 + generation).
-- run_gate scores the candidate on both sets (regression at temperature 0, purpose="regression") and applies the rule.
+- run_gate scores the candidate on both sets and the parent on the regression set (regression at temperature 0,
+  purpose="regression"), then applies the rule. The parent passed every regression task once in traffic, but it
+  does not re-pass all of them (base: 81 of 90 at temperature 0), so the candidate is compared with that re-run.
 
 Details:
 - Reuse takes the earliest stored run per task and skips runs that ended in model_error, tool_error or timeout.
   Eval reuse spans every arm, seed and generation (key: task, model_version, prompt_version, purpose "eval",
-  temperature EVAL_TEMPERATURE); regression reuse is limited to this (arm, seed, generation, candidate).
+  temperature EVAL_TEMPERATURE); the candidate's regression reuse is limited to this (arm, seed, generation,
+  candidate), and the parent's spans every lineage (key: task, model_version, prompt_version, purpose
+  "regression", temperature 0).
   A fresh run that ends in an infrastructure failure counts as not passed; a batch lost entirely to them raises
   DependencyError.
 - "Most recent traffic runs" = the parent's (model + prompt) traffic runs of the lineage in its latest generation
   <= `generation`. The candidates are sorted; the sample is returned sorted.
-- An empty regression set (the parent passed no traffic task) scores 1.0, so it never blocks promotion.
+- An empty regression set (the parent passed no traffic task) scores 1.0 for both, so it never blocks promotion.
 """
 
 import random
 from dataclasses import dataclass
 
 import psycopg
-from scar_schemas.constants import EVAL_TEMPERATURE, REGRESSION_MIN_PASS, REGRESSION_SET_SIZE
+from scar_schemas.constants import EVAL_TEMPERATURE, REGRESSION_SET_SIZE, REGRESSION_TOLERANCE
 from scar_schemas.models import RunBatchRequest, RunRequest
 
 from .clients import AgentClient
@@ -32,17 +37,22 @@ from .log import get_logger
 
 log = get_logger(__name__)
 INFRA_RETRY_ROUNDS = 2  # extra rounds for runs that ended in an infrastructure failure
+FLOAT_SLACK = 1e-9  # 0.90 - 0.05 is 0.8500000000000001
 
 
 @dataclass(frozen=True)
 class GateResult:
     eval_score: float
     regression_score: float
+    parent_regression_score: float
     promote: bool
 
 
-def promotion_rule(eval_score: float, parent_eval_score: float, regression_score: float) -> bool:
-    return eval_score > parent_eval_score and regression_score >= REGRESSION_MIN_PASS
+def promotion_rule(
+    eval_score: float, parent_eval_score: float, regression_score: float, parent_regression_score: float
+) -> bool:
+    floor = parent_regression_score - REGRESSION_TOLERANCE - FLOAT_SLACK
+    return eval_score > parent_eval_score and regression_score >= floor
 
 
 def eval_score(
@@ -133,7 +143,7 @@ def run_gate(
     reg_ids = regression_task_ids(
         conn, **lineage, parent_model_version=parent_model_version, parent_prompt_version=parent_prompt_version
     )
-    reg_score = 1.0
+    reg_score = parent_reg_score = 1.0
     if reg_ids:
         stored = _earliest(
             conn,
@@ -142,13 +152,23 @@ def run_gate(
             (reg_ids, candidate_model_version, candidate_prompt_version, arm, seed, generation),
         )
         reg_score = _score(agent, reg_ids, stored, **candidate, **lineage, purpose="regression", temperature=0.0)
+        parent = {"model_version": parent_model_version, "prompt_version": parent_prompt_version}
+        stored = _earliest(
+            conn,
+            "task_id = ANY(%s) AND model_version = %s AND prompt_version = %s AND purpose = 'regression'"
+            " AND (body->>'temperature')::float8 = 0",
+            (reg_ids, parent_model_version, parent_prompt_version),
+        )
+        parent_reg_score = _score(agent, reg_ids, stored, **parent, **lineage, purpose="regression", temperature=0.0)
 
-    result = GateResult(score, reg_score, promotion_rule(score, parent_eval_score, reg_score))
+    promote = promotion_rule(score, parent_eval_score, reg_score, parent_reg_score)
+    result = GateResult(score, reg_score, parent_reg_score, promote)
     log.info(
-        "run_gate: eval %.4f vs parent %.4f, regression %.4f over %d tasks -> %s",
+        "run_gate: eval %.4f vs parent %.4f, regression %.4f vs parent %.4f over %d tasks -> %s",
         score,
         parent_eval_score,
         reg_score,
+        parent_reg_score,
         len(reg_ids),
         "promote" if result.promote else "reject",
         extra={**lineage, "model_version": candidate_model_version},

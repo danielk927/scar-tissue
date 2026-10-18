@@ -2,7 +2,7 @@ import random
 from datetime import timedelta
 
 import pytest
-from scar_schemas.constants import EVAL_TEMPERATURE, REGRESSION_MIN_PASS, REGRESSION_SET_SIZE
+from scar_schemas.constants import EVAL_TEMPERATURE, REGRESSION_SET_SIZE, REGRESSION_TOLERANCE
 
 from scar_train.clients import DependencyError
 from scar_train.gate import GateResult, eval_score, promotion_rule, regression_task_ids, run_gate
@@ -41,12 +41,13 @@ def agent_passing(conn, failing=()):
 
 
 def test_promotion_rule_edges():
-    assert REGRESSION_MIN_PASS == 0.95
-    assert promotion_rule(0.51, 0.50, 0.95)
-    assert promotion_rule(0.51, 0.50, 95 / 100) and promotion_rule(0.51, 0.50, 19 / 20)
-    assert not promotion_rule(0.50, 0.50, 1.0)  # equal eval does not promote
-    assert not promotion_rule(0.49, 0.50, 1.0)
-    assert not promotion_rule(0.90, 0.50, 94 / 100)
+    assert REGRESSION_TOLERANCE == 0.05
+    assert promotion_rule(0.51, 0.50, 0.85, 0.90)  # exactly the tolerance below the parent
+    assert promotion_rule(0.71, 0.45, 78 / 90, 81 / 90)  # D-s0-g1
+    assert promotion_rule(0.51, 0.50, 1.0, 0.90)
+    assert not promotion_rule(0.50, 0.50, 1.0, 0.90)  # equal eval does not promote
+    assert not promotion_rule(0.49, 0.50, 1.0, 0.90)
+    assert not promotion_rule(0.90, 0.50, 0.84, 0.90)
 
 
 def test_eval_score_reuses_runs_across_lineages_and_resumes(conn):
@@ -130,20 +131,15 @@ def test_run_gate_sends_the_right_purposes_and_temperatures_and_resumes(conn):
 
     result = run_gate(conn, agent, **gate, parent_eval_score=0.5)
 
-    assert result == GateResult(eval_score=0.75, regression_score=0.75, promote=False)
-    sent = [(r.purpose, r.temperature, r.task_id) for r in agent.requests]
-    assert sent == [("eval", 0.0, t) for t in eval_ids] + [
-        ("regression", 0.0, t) for t in ("task_r2", "task_r3", "task_r4")
-    ]
+    assert result == GateResult(eval_score=0.75, regression_score=0.75, parent_regression_score=1.0, promote=False)
+    sent = [(r.model_version, r.purpose, r.temperature, r.task_id) for r in agent.requests]
+    assert sent == (
+        [("D-s0-g1", "eval", 0.0, t) for t in eval_ids]
+        + [("D-s0-g1", "regression", 0.0, t) for t in ("task_r2", "task_r3", "task_r4")]
+        + [("base", "regression", 0.0, t) for t in ("task_r1", "task_r2", "task_r3", "task_r4")]
+    )
     for r in agent.requests:
-        assert (r.model_version, r.prompt_version, r.arm, r.seed, r.generation, r.n) == (
-            "D-s0-g1",
-            "system_v1",
-            "D",
-            0,
-            1,
-            1,
-        )
+        assert (r.prompt_version, r.arm, r.seed, r.generation, r.n) == ("system_v1", "D", 0, 1, 1)
 
     # A resumed gate reuses every stored run.
     again = agent_passing(conn)
@@ -167,7 +163,7 @@ def test_empty_regression_set_scores_one(conn):
         parent_eval_score=0.5,
         eval_task_ids=["task_e1", "task_e2"],
     )
-    assert result == GateResult(eval_score=1.0, regression_score=1.0, promote=True)
+    assert result == GateResult(eval_score=1.0, regression_score=1.0, parent_regression_score=1.0, promote=True)
     assert {r.purpose for r in agent.requests} == {"eval"}
     assert {r.prompt_version for r in agent.requests} == {"B-s0-g1"}
 
@@ -194,3 +190,37 @@ def test_reused_scores_with_only_chronic_timeouts_left_are_not_an_outage(conn):
     agent = FakeAgent(conn, lambda req, i: {"stop_reason": "timeout", "passed": False})
     assert eval_score(conn, agent, **BASE, arm="B", seed=0, generation=0, eval_task_ids=EVAL_IDS[:2]) == 0.5
     assert [len(b.requests) for b in agent.batches] == [1, 1, 1]
+
+
+def test_the_candidate_may_trail_the_parent_on_regression_by_the_tolerance(conn):
+    reg_ids = [f"task_r{i:02d}" for i in range(20)]
+    for t in reg_ids:
+        traffic(conn, f"run_{t}", t, 1)
+    # The parent re-passes 18 of the 20 tasks it passed in traffic; another lineage's gate already ran one of them.
+    reg = dict(purpose="regression", temperature=0.0, arm="C", generation=3)
+    stored(conn, "run_p", "task_r00", passed=False, **reg, **BASE)
+    parent_fails, cand_fails = {"task_r00", "task_r01"}, {"task_r02", "task_r03", "task_r04"}
+
+    def outcome(req, i):
+        return {"passed": req.task_id not in (parent_fails if req.model_version == "base" else cand_fails)}
+
+    agent = FakeAgent(conn, outcome)
+    gate = dict(
+        arm="D",
+        seed=0,
+        generation=1,
+        candidate_model_version="D-s0-g1",
+        candidate_prompt_version="system_v1",
+        parent_model_version="base",
+        parent_prompt_version="system_v1",
+        eval_task_ids=["task_e1"],
+    )
+    result = run_gate(conn, agent, **gate, parent_eval_score=0.5)
+    assert result == GateResult(eval_score=1.0, regression_score=0.85, parent_regression_score=0.9, promote=True)
+    assert [r.task_id for r in agent.requests if r.model_version == "base"] == reg_ids[1:]
+
+    cand_fails.add("task_r05")  # a fresh candidate that trails the parent by 0.10
+    result = run_gate(
+        conn, FakeAgent(conn, outcome), **{**gate, "candidate_model_version": "D-s0-g2"}, parent_eval_score=0.5
+    )
+    assert (result.regression_score, result.parent_regression_score, result.promote) == (0.8, 0.9, False)

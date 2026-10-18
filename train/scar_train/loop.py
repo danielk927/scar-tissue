@@ -532,10 +532,14 @@ class _Generation:
             parent_eval_score=rec.parent_eval_score,
             eval_task_ids=self._eval_task_ids(),
         )
-        self._set(eval_score=res.eval_score, regression_score=res.regression_score)
+        self._set(
+            eval_score=res.eval_score,
+            regression_score=res.regression_score,
+            parent_regression_score=res.parent_regression_score,
+        )
         self._note(
             f"gate: eval {res.eval_score:.3f} vs parent {rec.parent_eval_score:.3f},"
-            f" regression {res.regression_score:.3f}"
+            f" regression {res.regression_score:.3f} vs parent {res.parent_regression_score:.3f}"
         )
         return GenStatus.promoted if res.promote else GenStatus.rejected
 
