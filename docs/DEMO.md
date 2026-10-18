@@ -41,8 +41,8 @@ Wake the model first (Setup, step 1).
 |---|---|---|---|
 | 1 | 0:00-0:15 | `/dashboard` chart | The hook from the solo script, 0:00-0:20. |
 | 2 | 0:15-0:40 | `/dashboard` per-arm table, then the generations table | 46.3% to 72.7% on held-out companies; lessons-in-prompt 8.3%, GEPA 43%; D-s0-g1 rejected at 70.7% for breaking solved tasks. |
-| 3 | 0:40-1:15 | `/ask`: a question from the "fixed" rows below, **Ask**, the interpretation, **Yes, run it**, the result card | "A judge asks a question about one company's books. The model that failed this last night now gets it right." |
-| 4 | 1:15-1:35 | The base model's run of the same question (`/runs/<base run>` from the table below) | "Here is the base model on the same question: it never submitted an answer." |
+| 3 | 0:40-1:15 | `/ask`: prepared question #1 (Riverstage Arts Alliance, count of Operating Expense transactions), **Ask**, the interpretation, **Yes, run it**, the result card | "A judge asks a question about one company's books. The model that failed this last night now gets it right." |
+| 4 | 1:15-1:35 | The base model's run of the same question (for #1: `/runs/run_f0c366eddbc14ad98ba942bcb84b4f26`) | "Here is the base model on the same question: it never submitted an answer." |
 | 5 | 1:35-1:55 | `/runs/run_0faba9d7e7704101a0f6e6593a6ba91c`, then the Sentry trace and issues | Failures are traced in Sentry and triaged by Jev into training data. |
 | 6 | 1:55-2:15 | The Veri job page | Five variants per failure, passing attempts only, one Veri LoRA job per generation. |
 | 7 | 2:15-2:30 | `/dashboard` chart | The close from the solo script, shortened. |
@@ -65,6 +65,7 @@ Wake the model first (Setup, step 1).
 
 - **The run takes too long (over about 2 min):** keep talking over the Sentry tabs. At 3 min it ends as `timeout`; open a prepared failed run instead (`/runs/<run_id>`, on the laptop whose database has it).
 - **The model is asleep or returns 503:** show a prepared trace and run page, and run `veri wake` in the background.
+- **Parse fails with an error (HTTP 503):** click **Ask** again; it happened once in ten parses at 09:25 PDT.
 - **Parse says it can't answer:** the card offers three example questions for that company. Use one, or a question from the table.
 - **The judge's question passes:** that's fine ("base gets some right"); then run a prepared failing question.
 - **Groq is rate-limited (parse over 15 s):** wait; it retries on its own. Don't click **Ask** twice.
@@ -88,6 +89,26 @@ Spare: #13 from the handoff list (Courtyard Commons Apartments Construction, Tax
 | 8 | Signalcraft Systems Integration (`company-054`) | Set up 2 month-end journal entries, starting January 2026, that amortize $20,378.78 of Prepaid Expenses into Operating Expense. Split it evenly, rounded to cents, with any leftover cents in the final month. | `book.prepaid_amortization` | wrong journal entries (matched 0 of 2 expected entries) | `run_c3199645aa114b929b074841bf83ccbe` |
 | 9 | Signalcraft Systems Integration (`company-054`) | Transaction company-054:pbill-00392:1 belongs in Subcontractors. Post one journal entry on its date to reclassify the whole amount there. | `book.reclassify` | never called submit_answer (wrote the answer as text) | `run_83fe3203723f40a09eab94a8177d1fa3` |
 | 10 | Lanternwade Commercial Realty (`company-067`) | Transaction company-067:bill-software-00238:1 belongs in Insurance. Post one journal entry on its date to reclassify the whole amount there. | `book.reclassify` | recorded entries but submitted no entry_ids | `run_9fa3f27c37054a0491076ed440a85e6b` |
+
+### Prepared questions, re-run on D-s0-g2
+
+Run on Person 1's laptop at 09:25 PDT through `/judge/parse` and `/judge/run` (the judge's runs use the current model, D-s0-g2), and on `base` for the same tasks (`purpose="smoke"`).
+D-s0-g2 passed 7 of 10 and `base` 2 of 10; D-s0-g2 fixed #1, #3, #4, #7 and #8.
+For the video and the solo script, ask a **fixed** question live and open the base run next to it; ask a question that fails on both when you want to show a failure being caught.
+Run pages are at `/runs/<run_id>` on Person 1's laptop. Outcomes at temperature 0 can still vary between runs.
+
+| # | Use | D-s0-g2 | D-s0-g2 run | base | base run |
+|---|---|---|---|---|---|
+| 1 | **fixed** | passed | `run_1be7b35b549448efac84554709030327` | failed (no answer submitted) | `run_f0c366eddbc14ad98ba942bcb84b4f26` |
+| 2 | passes on both | passed | `run_4cbc3973c1434fcb837da1df12e29352` | passed | `run_ae46f776d73c47c8a330215d08d0db4c` |
+| 3 | **fixed** | passed | `run_72bcf1b9eed641309f505adc18d810b1` | failed (no answer submitted) | `run_2e89b9e2c6ce48a19bbbe17e0977b570` |
+| 4 | **fixed** | passed | `run_71d29160f2d943acb047f8d8f9963814` | failed (no answer submitted) | `run_5fa07192eb8c4c42b2c04c444a82df8c` |
+| 5 | passes on both | passed | `run_0b9d1b0f2a0c4acaad2e485f846dff73` | passed | `run_75c815eb82194a22becbada93e24676a` |
+| 6 | fails on both | failed (wrong answer) | `run_5aab649f034244098d0d14e28f55293f` | failed (wrong answer) | `run_24b1a7d8d6174d70a2906b433be2beb5` |
+| 7 | **fixed** | passed | `run_14464e1a2d514039a85c1efda4ea78df` | failed (wrong answer) | `run_3439f52dd0ce4e24a30b27a4150b4eed` |
+| 8 | **fixed** | passed | `run_5dba07ca183e413ebc1271f4d4f056c0` | failed (wrong answer) | `run_1b3ad5bb6fc543789f110ef2fe2d66dd` |
+| 9 | fails on both | failed (wrong answer) | `run_e656d02686574c06bf6f9c3cb991b88a` | failed (no answer submitted) | `run_8ca83495b13d4fb98134b02facdc04b0` |
+| 10 | fails on both | failed (wrong answer) | `run_3e54470464094535b7d40f374d96b747` | failed (wrong answer) | `run_4aff1ced532e4d85bbf1148d9c4b2a8b` |
 
 ## Sentry views (P2-10)
 
