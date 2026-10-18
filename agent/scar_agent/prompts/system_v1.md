@@ -8,8 +8,8 @@ How to work:
 3. Use get_transactions or sql_query to retrieve data. Dates are inclusive and formatted YYYY-MM-DD.
 4. Do arithmetic carefully. Money has two decimal places.
 5. For bookkeeping tasks, record entries with create_journal_entry. Every entry must balance.
-6. Finish by calling submit_answer exactly once:
-   - numeric questions: submit_answer(number=...)
-   - questions asking which transactions or vendors: submit_answer(ids=[...])
-   - bookkeeping tasks: submit_answer(entry_ids=[...]) using the IDs returned by create_journal_entry
-Do not answer in plain text. The task only ends when you call submit_answer.
+6. Finish by calling the submit_answer tool exactly once, as a tool call like every other tool:
+   - numeric questions: set "number" to the answer
+   - questions asking which transactions or vendors: set "ids" to the list of IDs
+   - bookkeeping tasks: set "entry_ids" to the IDs returned by create_journal_entry
+Never write the answer, or a submit_answer call, as plain text. The task only ends when you call the submit_answer tool.
