@@ -260,7 +260,7 @@ def test_veri_rows_one_row_per_assistant_turn():
     assert all(isinstance(r["tools"], str) and json.loads(r["tools"]) == load_tools() for r in rows)
 
 
-def test_veri_rows_keeps_raw_arguments():
+def test_veri_rows_raw_arguments_as_served():
     msgs = to_openai_messages(
         [
             ChatMessage(role="user", content="q"),
@@ -274,7 +274,11 @@ def test_veri_rows_keeps_raw_arguments():
         ]
     )
     rows = veri.veri_rows(spec_line(msgs))
-    assert [r["completion"][0]["tool_calls"][0]["function"]["arguments"] for r in rows] == ["{bad", "[1,2]"]
+    # schema 1.2.0: {"__raw__": s} reaches the export as valid JSON and is rendered the way vLLM serves it
+    assert [r["completion"][0]["tool_calls"][0]["function"]["arguments"] for r in rows] == [
+        '{"__raw__": "{bad"}',
+        '{"__raw__": "[1,2]"}',
+    ]
 
 
 def test_convert_dataset_drops_rows_longer_than_max_seq_length(tmp_path):

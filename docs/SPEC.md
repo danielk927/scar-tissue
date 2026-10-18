@@ -393,7 +393,7 @@ Everything in this section lives in the `scar_schemas` package. Person 3 creates
 
 ```python
 # scar_schemas/constants.py — SHARED CONTRACT
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 TOOLS_VERSION = "tools_v1"
 BASE_PROMPT_VERSION = "system_v1"
 EVAL_SET_ID = "eval_v1"
@@ -434,6 +434,8 @@ GEPA_VAL_SIZE = 50
 ```
 
 **1.1.0 (2026-10-18):** `K_SAMPLES` 8 to 4 and `VARIANTS_PER_FAILURE` 10 to 5 (the first fallback in 9.13) and `FAILURE_CAP_PER_GEN` 50 to 25, because one Veri L4 replica serves every agent run and a full-size generation (about 5,000 runs) would take several hours each; traffic, eval and regression sizes are unchanged.
+
+**1.2.0 (2026-10-18):** `to_openai_messages` emits `{"__raw__": s}` tool-call arguments as that JSON object instead of the bare string `s`. vLLM parses every earlier tool call's arguments with `json.loads` before applying the chat template, so a transcript in which the model once wrote malformed arguments made every later request fail with HTTP 400 and the run end as `model_error` (reproduced on `base`: the raw form returns 400, the wrapped form returns 200 and the model retries with a valid call). The training export's `json.loads` of the same strings now succeeds too, and `from_openai_message` parses the wrapped form back to `{"__raw__": s}`, so round trips are unchanged.
 
 These are starting values. If a value must change (for example, `K_SAMPLES` down to 4 because sampling is too slow), follow Section 8.9 so all three services change together.
 
@@ -859,7 +861,8 @@ def to_openai_messages(messages: list[ChatMessage]) -> list[dict]:
     assistant tool calls -> {"id": c.id, "type": "function",
                              "function": {"name": c.name, "arguments": dumps_args(c.arguments)}}
     tool messages        -> {"role": "tool", "tool_call_id": ..., "name": ..., "content": ...}
-    Omit keys whose value is None. If arguments == {"__raw__": s}, emit s unchanged as the arguments string."""
+    Omit keys whose value is None. Arguments are always valid JSON: {"__raw__": s} is emitted as the JSON
+    object itself (dumps_args), never as the bare string s (1.2.0)."""
 
 def from_openai_message(msg: dict) -> ChatMessage:
     """Inverse of the above for one message returned by the model.
