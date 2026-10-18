@@ -46,5 +46,6 @@ Append-only. One line per decision, under your person's heading (SPEC R11).
 - 2026-10-17: The web reaches services through Next.js rewrites `/api/{agent,train,env}/*` (same origin, so no CORS and trace headers pass through); proxy timeout 200 s.
 - 2026-10-17: Session Replay rate comes from `NEXT_PUBLIC_SENTRY_REPLAY_RATE` (default 0, set 1 for the demo) because the free plan has 50 replays; error replays stay at 100%.
 - 2026-10-17: Web pins `next@16.3.8` and `@sentry/nextjs@11.4.0` (newest releases at least two weeks old).
+- 2026-10-18: The agent loop re-attaches provider-only tool-call fields (Gemini's `extra_content` thought signature, required on the next turn) to outgoing requests, keyed by tool-call ID within one run. Stored `RunResult.messages` never contain them, so the contract shape is unchanged; a no-op for providers without the field.
 
 ## Person 3

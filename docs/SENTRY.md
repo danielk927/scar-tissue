@@ -340,6 +340,7 @@ Facts:
 
 - Source: Sentry's open-source frontend `getsentry/sentry` `static/app/router/routes.tsx` (master, fetched 2026-10-17). `exploreRoutes = {path: '/explore/', withOrgPath: true}` → child `traces/` → child `traceView = {path: 'trace/:traceSlug/'}`. `withOrgPath` renders both the bare path (customer domain `{org}.sentry.io`) and `/organizations/:orgId/...` (`static/app/router/types.tsx`).
 - This is **not stated in docs.sentry.io**. The trace-view docs only give `https://sentry.io/orgredirect/organizations/:orgslug/explore/traces/` (docs: https://docs.sentry.io/concepts/key-terms/tracing/trace-view/).
+- **Confirmed 2026-10-18:** a real link of this form (`https://ucla-s1.sentry.io/explore/traces/trace/<id>/`) opened the run's trace. The trace showed the run span with its chat and tool spans, the run log, the `agent_run_failed` issue, and the Agent Activity transcript rendered from our `{role, parts}` messages.
 - The project isn't part of the path, so `SENTRY_PROJECT` is not needed for the link. Whether `?project=<id>` or a timestamp query param improves loading is **UNKNOWN**. Click once in the UI and copy the address bar to confirm.
 
 ## 11. Quota notes

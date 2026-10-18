@@ -171,6 +171,6 @@ export function nextJudgeGeneration(gens: GenerationRecord[]): number {
 }
 
 export function traceUrl(traceId: string | null, org: string | undefined): string | null {
-  // TODO(VERIFY): format from Sentry's frontend routes (docs/SENTRY.md section 10); confirm by clicking a trace
+  // format confirmed by opening a real trace link (docs/SENTRY.md section 10)
   return traceId && org ? `https://${org}.sentry.io/explore/traces/trace/${traceId}/` : null;
 }

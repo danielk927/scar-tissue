@@ -52,7 +52,7 @@ def trace_url(trace_id: str | None) -> str | None:
     org = env("SENTRY_ORG")
     if not trace_id or not org:
         return None
-    # TODO(VERIFY): format taken from Sentry's frontend routes, not docs; confirm by clicking one trace
+    # format confirmed by opening a real trace link (docs/SENTRY.md section 10)
     return f"https://{org}.sentry.io/explore/traces/trace/{trace_id}/"
 
 
