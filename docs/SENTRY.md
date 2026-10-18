@@ -16,6 +16,7 @@ Anything not covered by one of these is marked **UNKNOWN**.
 - **Web:** `@sentry/nextjs` pinned to **11.4.0** (newest release at least two weeks old; `withSentryConfig` from `@sentry/nextjs/config`, `captureRouterTransitionStart`, `captureRequestError` and `replayIntegration` exports checked in the installed package). The browser calls the services through Next.js rewrites (`/api/agent/*`, `/api/train/*`, `/api/env/*`), so requests are same-origin and the browser's trace headers pass through to FastAPI.
 - **Session Replay rate:** `NEXT_PUBLIC_SENTRY_REPLAY_RATE` (default 0, set to 1 for the demo) because of the 50-replay free quota (section 11). Error replays stay at 100%.
 - **Persons 1 and 3:** paste the section 6 snippet into your service to get Sentry Logs and tracing (P2-10).
+- **IC-1 (2026-10-18, Person 2's local stack):** `scripts/smoke_ic1.sh` passed; base scored 12/30 seed tasks (40%); stop reasons were 18 submitted, 8 no_submit and 4 model_error (all four were 60 s turn timeouts on the shared replica). Every run was stored with `passed` set by the verifier. Spans, tags, logs from all three services, and `agent_run_failed` issues grouped per (template, stop reason) were confirmed in Sentry by Person 2; see `docs/DEMO.md` "Sentry views".
 
 ## 1. SDK versions
 
