@@ -393,7 +393,7 @@ Everything in this section lives in the `scar_schemas` package. Person 3 creates
 
 ```python
 # scar_schemas/constants.py — SHARED CONTRACT
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 TOOLS_VERSION = "tools_v1"
 BASE_PROMPT_VERSION = "system_v1"
 EVAL_SET_ID = "eval_v1"
@@ -416,10 +416,10 @@ EVAL_TEMPERATURE = 0.0
 SEEDS = (0, 1, 2)
 N_GENERATIONS = 4              # generations 1..4 after generation 0
 TRAFFIC_PER_GEN = 200
-FAILURE_CAP_PER_GEN = 50       # max included failures used per generation
+FAILURE_CAP_PER_GEN = 25       # max included failures used per generation (was 50; 1.1.0)
 INCLUDE_LEARNABLE_P = 0.6
-VARIANTS_PER_FAILURE = 10
-K_SAMPLES = 8
+VARIANTS_PER_FAILURE = 5       # was 10 (1.1.0, SPEC 9.13 fallback)
+K_SAMPLES = 4                  # was 8 (1.1.0, SPEC 9.13 fallback)
 SAMPLE_TEMPERATURE = 0.8
 MAX_EXAMPLES_PER_TASK = 2
 REPLAY_RATIO = 1.0             # replay examples per self example
@@ -432,6 +432,8 @@ GEPA_MAX_METRIC_CALLS = 150
 GEPA_TRAIN_EXTRA = 50          # random train tasks added to GEPA trainset
 GEPA_VAL_SIZE = 50
 ```
+
+**1.1.0 (2026-10-18):** `K_SAMPLES` 8 to 4 and `VARIANTS_PER_FAILURE` 10 to 5 (the first fallback in 9.13) and `FAILURE_CAP_PER_GEN` 50 to 25, because one Veri L4 replica serves every agent run and a full-size generation (about 5,000 runs) would take several hours each; traffic, eval and regression sizes are unchanged.
 
 These are starting values. If a value must change (for example, `K_SAMPLES` down to 4 because sampling is too slow), follow Section 8.9 so all three services change together.
 

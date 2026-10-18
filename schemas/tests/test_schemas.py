@@ -16,7 +16,7 @@ from scar_schemas.openai_format import dumps_args, from_openai_message, load_too
 
 
 def test_constants():
-    assert constants.SCHEMA_VERSION == "1.0.0"
+    assert constants.SCHEMA_VERSION == "1.1.0"
     assert constants.TOOLS_VERSION == "tools_v1"
     assert constants.SEEDS == (0, 1, 2)
 

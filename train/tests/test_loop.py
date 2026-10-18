@@ -3,6 +3,7 @@ import json
 
 import pytest
 from psycopg.types.json import Jsonb
+from scar_schemas.constants import K_SAMPLES, VARIANTS_PER_FAILURE
 from scar_schemas.models import EvalSet, GenStatus, LearnResult, Origin, RunBatchRequest, RunRequest, SimulateResult
 
 from scar_train import data_builder, gate, loop, registry
@@ -170,11 +171,11 @@ def test_arm_d_runs_every_step_in_order(conn, ctx, f, base, tmp_path):
     sim = f.args["simulate"][0]["req"]
     assert (sim.model_version, sim.prompt_version, sim.n_tasks, sim.generation) == ("base", "system_v1", 200, 1)
     mut = f.args["mutate"][0]["req"]
-    assert (mut.failure_ids, mut.variants_per_failure, mut.seed) == (["fail_2", "fail_1"], 10, 0)
+    assert (mut.failure_ids, mut.variants_per_failure, mut.seed) == (["fail_2", "fail_1"], VARIANTS_PER_FAILURE, 0)
     snap = f.args["build_snapshot"][0]
-    variants = [f"task_var_fail_{i}_{j}" for i in (1, 2) for j in range(10)]
+    variants = [f"task_var_fail_{i}_{j}" for i in (1, 2) for j in range(VARIANTS_PER_FAILURE)]
     assert snap["task_ids"] == sorted(variants + ["task_a", "task_b"])
-    assert (snap["model_version"], snap["k_samples"], snap["generation"]) == ("base", 8, 1)
+    assert (snap["model_version"], snap["k_samples"], snap["generation"]) == ("base", K_SAMPLES, 1)
     assert f.args["export_jsonl"][0]["path"] == tmp_path / "D-s0-g1" / "dataset.jsonl"
     assert {k: f.args["train"][0][k] for k in ("version", "n_examples", "base_model_hf_id", "seed")} == {
         "version": "D-s0-g1",
@@ -193,7 +194,7 @@ def test_arm_d_runs_every_step_in_order(conn, ctx, f, base, tmp_path):
         3,
         2,
         2,
-        20,
+        2 * VARIANTS_PER_FAILURE,
         5,
     )
     mv = registry.get_model_version(conn, "D-s0-g1")
@@ -339,7 +340,7 @@ def test_a_failed_step_resumes_without_redoing_completed_steps(conn, ctx, f, bas
     rec = run(conn, ctx, arm)
     assert f.calls == calls_from(steps, step)
     assert (rec.status, rec.finished_at is not None) == ("promoted", True)
-    assert (rec.traffic_runs, rec.failures_included, rec.variants_created) == (3, 2, 20)
+    assert (rec.traffic_runs, rec.failures_included, rec.variants_created) == (3, 2, 2 * VARIANTS_PER_FAILURE)
     assert rec.examples_built == (5 if arm == "D" else 0)
 
 
