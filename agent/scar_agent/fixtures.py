@@ -1,6 +1,6 @@
 """Export and validate the shared fixtures (P2-04).
 
-  python -m scar_agent.fixtures export-runs      # app.runs -> fixtures/runs_sample.jsonl
+  python -m scar_agent.fixtures export-runs [--purpose traffic]  # app.runs -> fixtures/runs_sample.jsonl
   python -m scar_agent.fixtures export-failures  # app.failures -> fixtures/failures_sample.jsonl
   python -m scar_agent.fixtures validate         # both files parse as RunResult / FailureRecord
 """
@@ -29,10 +29,10 @@ def _write(path, models) -> None:
             f.write(json.dumps(m.model_dump(mode="json"), sort_keys=True) + "\n")
 
 
-async def export_runs(limit: int) -> None:
+async def export_runs(limit: int, purpose: str | None) -> None:
     store = await Store.open()
     try:
-        runs = await store.list_runs(limit=limit)
+        runs = await store.list_runs(purpose=purpose, limit=limit)
     finally:
         await store.close()
     failed = [r for r in runs if not r.passed]
@@ -84,11 +84,12 @@ def main() -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
     runs = sub.add_parser("export-runs")
     runs.add_argument("--limit", type=int, default=60)
+    runs.add_argument("--purpose", help="only runs with this purpose, e.g. traffic (the ones /failures/mine triages)")
     sub.add_parser("export-failures")
     sub.add_parser("validate")
     args = parser.parse_args()
     if args.cmd == "export-runs":
-        asyncio.run(export_runs(args.limit))
+        asyncio.run(export_runs(args.limit, args.purpose))
     elif args.cmd == "export-failures":
         asyncio.run(export_failures())
     else:
