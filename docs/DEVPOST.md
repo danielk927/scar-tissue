@@ -79,6 +79,13 @@ We added one "Prepaid Expenses" account to every company so the prepaid-amortiza
 We planted 989 duplicate bill payments (5 to 15 per company) so duplicate-payment questions always have answers.
 The full list, with every planted row, is in `docs/DATASET_CHANGES.md`.
 
+## Gallery
+
+- `docs/results.png`: eval success rate by generation, with rejected candidates.
+- `docs/screenshots/veri-job-d-s0-g2.png` and `veri-job-d-s0-g1.png`: the two Veri LoRA jobs (the promoted one and the one the gate rejected).
+- `docs/screenshots/veri-deployment.png`: the Veri multi-adapter deployment that served every agent run (25,967 requests).
+- `docs/screenshots/sentry-agents.png`, `sentry-judge-trace.png`, `sentry-issues.png`: Sentry AI agent monitoring, a judge question's trace, and failure issues.
+
 ## Built with
 
 Python, FastAPI, PostgreSQL, Next.js, Sentry, Veri, Jev (TypeSafe), vLLM, Qwen3-4B-Instruct-2507, GEPA, Groq, uv.

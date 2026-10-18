@@ -119,6 +119,8 @@ It bills $1.05 per hour while awake; the Veri balance was $10.17 at the freeze.
 
 1. **/dashboard generations table**: D-s0-g1 scored 70.7% on held-out companies but was **rejected**: it broke 9 regression tasks the base solved and fixed 3 (86.7% vs the base's 93.3% on the same set, more than the 5-point tolerance). D-s0-g2, trained on both generations' 405 examples, scored **72.7% vs 46.3%** and beat the base on regression too (92.7% vs 88.5%), so it shipped.
 2. **The Veri jobs**: D-s0-g1 https://veri.studio/training?job=1b079d04fb2a and D-s0-g2 https://veri.studio/training?job=d1a57653ef1b (one LoRA job each, `sft_text`, one row per assistant turn).
+   Screenshots, if the dashboard is slow: `docs/screenshots/veri-job-d-s0-g1.png` (H100, 2,038 steps), `docs/screenshots/veri-job-d-s0-g2.png` (A100, 3,348 steps, LoRA rank 16, 2 epochs) and `docs/screenshots/veri-deployment.png` (the multi-adapter deployment: 25,967 requests, $7.19 over 6.9 hours).
+   If a judge asks about D-s0-g2's final loss of 0.0000: it is the loss on the last training row; the gate scores on 30 companies the model never trained on (72.7% vs 46.3%).
 3. **Fixed on held-out companies**: on `eval_v1`, D-s0-g2 passes 96 tasks the base failed and fails 17 the base passed. Open a pair side by side (`/runs/<run_id>`; these run pages exist only on Person 1's laptop, which has the database):
 
 | Family | Question | Base (failed) | D-s0-g2 (passed) |
