@@ -87,12 +87,22 @@ def _continue_trace(request: Request) -> None:
 
 @app.post("/agent/run", response_model=list[RunResult])
 async def agent_run(req: RunRequest, request: Request):
+    """`n` attempts of one request, stored as they finish. Not idempotent; see /agent/run_batch."""
     _continue_trace(request)
     return await request.app.state.runner.run(req)
 
 
 @app.post("/agent/run_batch", response_model=list[RunResult])
 async def agent_run_batch(req: RunBatchRequest, request: Request):
+    """Run every request; results are flattened in request order, then attempt order.
+
+    Not idempotent: each attempt is stored as soon as it finishes. If any attempt raises (a 503 from env
+    /verify or /tasks, an unknown task or model version), the whole call fails with that error while the
+    attempts that already finished stay stored. Retrying the same batch therefore stores duplicate runs.
+    Callers that retry should first reuse stored runs (GET /runs?task_id=...&model_version=...&purpose=...),
+    as env /simulate and the train data builder do. Model errors, tool errors and timeouts do not raise:
+    they end that attempt with a stop_reason and are stored like any other run.
+    """
     return await request.app.state.runner.run_batch(req.requests, req.max_concurrency)
 
 

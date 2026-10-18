@@ -27,6 +27,7 @@ from .clients import MODEL_TIMEOUT_S, EnvClient, ToolInfraError
 log = logging.getLogger("scar_agent.loop")
 
 RUN_TIMEOUT_S = 180.0
+MODEL_TIMEOUT_ATTEMPTS = 2  # a per-turn timeout is retried once (docs/DECISIONS.md)
 NUDGE = "Call a tool, or call submit_answer to finish."
 SUBMIT_OK = '{"ok":true}'
 RAW_ARGS_ERROR = '{"error":"arguments were not valid JSON"}'
@@ -87,6 +88,27 @@ class _Loop:
             "run_id": self.run_id, "task_id": self.ctx.task.task_id, "arm": req.arm, "seed": req.seed,
             "generation": req.generation, "model_version": req.model_version})
 
+    async def _create(self, sent: list[dict], tools: list[dict]) -> Any:
+        """One model call, at most MODEL_TIMEOUT_S per attempt. A timed-out attempt is retried once: the request
+        is stateless and vLLM drops it when we disconnect, and the whole-run timeout still bounds the run."""
+        ctx = self.ctx
+        for attempt in range(1, MODEL_TIMEOUT_ATTEMPTS + 1):
+            try:
+                async with asyncio.timeout(MODEL_TIMEOUT_S):
+                    return await ctx.llm.chat.completions.create(
+                        model=ctx.endpoint_model_id,
+                        messages=sent,
+                        tools=tools,
+                        tool_choice="auto",
+                        temperature=ctx.req.temperature,
+                        max_tokens=MAX_TOKENS_PER_TURN,
+                    )
+            except TimeoutError as e:
+                if attempt == MODEL_TIMEOUT_ATTEMPTS:
+                    raise
+                self._warn(f"model call timed out after {MODEL_TIMEOUT_S:.0f} s; retrying", e)
+        raise AssertionError("unreachable")
+
     async def run(self) -> None:
         ctx = self.ctx
         tools = load_tools(TOOLS_VERSION)
@@ -96,15 +118,7 @@ class _Loop:
             sent = with_call_extras(to_openai_messages(self.messages), self.call_extras)
             with self.trace.chat(ctx.endpoint_model_id, sent) as chat_span:
                 try:
-                    async with asyncio.timeout(MODEL_TIMEOUT_S):
-                        resp = await ctx.llm.chat.completions.create(
-                            model=ctx.endpoint_model_id,
-                            messages=sent,
-                            tools=tools,
-                            tool_choice="auto",
-                            temperature=ctx.req.temperature,
-                            max_tokens=MAX_TOKENS_PER_TURN,
-                        )
+                    resp = await self._create(sent, tools)
                     raw = resp.choices[0].message.model_dump()
                     msg = from_openai_message(raw)
                     for tc in raw.get("tool_calls") or []:

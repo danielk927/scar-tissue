@@ -188,3 +188,23 @@ def test_malformed_arguments_round_trip_as_valid_json():
     wire = to_openai_messages([stored])[0]
     assert json.loads(wire["tool_calls"][0]["function"]["arguments"]) == {"__raw__": "{oops"}
     assert from_openai_message(wire) == stored
+async def test_turn_timeout_retried_once(monkeypatch):
+    monkeypatch.setattr(loop_mod, "MODEL_TIMEOUT_S", 0.05)
+
+    async def slow():
+        await asyncio.sleep(1)
+
+    # first attempt times out, the retry answers
+    result, llm, _ = await run([slow, assistant(calls=[tool_call("submit_answer", {"number": 100.0})])])
+    assert result.stop_reason == "submitted" and result.passed and len(llm.requests) == 2
+    assert result.steps == 1
+
+
+async def test_turn_timeout_twice_is_model_error(monkeypatch):
+    monkeypatch.setattr(loop_mod, "MODEL_TIMEOUT_S", 0.05)
+
+    async def slow():
+        await asyncio.sleep(1)
+
+    result, llm, _ = await run([slow, slow, assistant(calls=[tool_call("submit_answer", {"number": 100.0})])])
+    assert result.stop_reason == "model_error" and len(llm.requests) == 2
