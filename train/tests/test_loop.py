@@ -342,6 +342,7 @@ def test_a_failed_step_resumes_without_redoing_completed_steps(conn, ctx, f, bas
     assert (rec.status, rec.finished_at is not None) == ("promoted", True)
     assert (rec.traffic_runs, rec.failures_included, rec.variants_created) == (3, 2, 2 * VARIANTS_PER_FAILURE)
     assert rec.examples_built == (5 if arm == "D" else 0)
+    assert "failed at" not in rec.notes  # the step ran again, so the failure note is stale
 
 
 def test_a_killed_runner_resumes_at_the_interrupted_step(conn, ctx, f, base):

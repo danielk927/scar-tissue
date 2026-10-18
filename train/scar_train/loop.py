@@ -232,7 +232,7 @@ class _Generation:
                 if step in DONE:  # finished in the state file, interrupted before the database
                     return self._finish(step)
                 if self.rec.status != step:  # resuming a failed or interrupted generation
-                    self._update(status=step, finished_at=None)
+                    self._update(status=step, finished_at=None, notes=self._notes_without_failure(step))
                 self._log(f"{self.gid} {step.value}")
                 nxt = getattr(self, f"_{step.value}")()
                 if nxt in DONE:
@@ -299,6 +299,12 @@ class _Generation:
     def _note(self, text: str) -> None:
         if text and text not in self.rec.notes:
             self._set(notes="; ".join(n for n in (self.rec.notes, text) if n))
+
+    def _notes_without_failure(self, step: GenStatus) -> str:
+        """The notes without the failure note _fail appended last, now that the failed step runs again."""
+        notes = self.rec.notes
+        cut = notes.rfind(f"failed at {step.value}: ") if self.rec.status == GenStatus.failed else -1
+        return notes if cut < 0 else notes[:cut].removesuffix("; ")
 
     def _fail(self, step: GenStatus, e: Exception) -> None:
         log.error("%s failed at %s", self.gid, step.value, exc_info=e)
